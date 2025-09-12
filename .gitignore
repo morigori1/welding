@@ -1,0 +1,23 @@
+# Virtual envs and caches
+.venv*
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Local artifacts and datasets (PII)
+out/
+warehouse/
+data/
+
+# Editors/OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.duckdb
+*.db
+*.sqlite
+*.log
+tmp_*.py
+*.ics
