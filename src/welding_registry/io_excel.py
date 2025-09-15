@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple, Dict, Any, Literal
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Literal
 
 import pandas as pd
 
 from .field_map import get_header_map, DATE_COLUMNS
-from typing import Iterable
 
 # NOTE: This module handles two distinct layout families:
 # 1) Standard headered tables (read_sheet/to_canonical)
@@ -26,7 +25,7 @@ class SheetSummary:
     headers: List[str]
 
 
-def _engine_for(path: Path) -> Literal['openpyxl','xlrd']:
+def _engine_for(path: Path) -> Literal["openpyxl", "xlrd"]:
     suffix = path.suffix.lower()
     if suffix in (".xlsx", ".xlsm", ".xltx", ".xltm"):
         return "openpyxl"
@@ -52,9 +51,13 @@ def _detect_header_row(df: pd.DataFrame) -> Optional[int]:
     return None
 
 
-def read_sheet(xls_path: Path, sheet_name: str | int, header_row_override: int | None = None) -> Tuple[pd.DataFrame, Optional[int]]:
+def read_sheet(
+    xls_path: Path, sheet_name: str | int, header_row_override: int | None = None
+) -> Tuple[pd.DataFrame, Optional[int]]:
     # Read a sample with no header to detect the header row
-    df_probe = pd.read_excel(xls_path, sheet_name=sheet_name, header=None, engine=_engine_for(xls_path))  # type: ignore[call-overload]
+    df_probe = pd.read_excel(
+        xls_path, sheet_name=sheet_name, header=None, engine=_engine_for(xls_path)
+    )  # type: ignore[call-overload]
     header_row: Optional[int]
     if header_row_override is not None:
         header_row = header_row_override
@@ -79,6 +82,7 @@ def read_sheet(xls_path: Path, sheet_name: str | int, header_row_override: int |
     df.columns = [str(c).strip() for c in df.columns]
     # Demote header cells that look like dates to Unnamed: <idx> (avoid accidental mapping/"ずれ")
     import re as _re
+
     new_cols: list[str] = []
     for i, c in enumerate(df.columns):
         try:
@@ -98,7 +102,9 @@ def summarize(xls_path: Path) -> List[SheetSummary]:
     for s in list_sheets(xls_path):
         df, header_row = read_sheet(xls_path, s)
         summaries.append(
-            SheetSummary(name=str(s), n_rows=len(df), n_cols=df.shape[1], headers=list(map(str, df.columns)))
+            SheetSummary(
+                name=str(s), n_rows=len(df), n_cols=df.shape[1], headers=list(map(str, df.columns))
+            )
         )
     return summaries
 
@@ -108,8 +114,10 @@ def to_canonical(df: pd.DataFrame) -> pd.DataFrame:
     Unmapped columns are preserved with their original labels.
     """
     header_map = get_header_map()
+
     def _norm(s: str) -> str:
         from .field_map import _norm_token  # type: ignore
+
         try:
             return _norm_token(s)
         except Exception:
@@ -117,6 +125,7 @@ def to_canonical(df: pd.DataFrame) -> pd.DataFrame:
 
     mapped_cols = {}
     import re
+
     for col in df.columns:
         raw = str(col).strip()
         norm = _norm(raw)
@@ -176,11 +185,16 @@ def to_canonical(df: pd.DataFrame) -> pd.DataFrame:
             base = 2000
             return base + n
         return n
+
     for c in DATE_COLUMNS:
         if c in out.columns:
             # Coalesce duplicate-named columns first
             idxs = [i for i, col in enumerate(out.columns) if col == c]
-            sraw = out.iloc[:, idxs[0]] if len(idxs) == 1 else out.iloc[:, idxs].bfill(axis=1).iloc[:, 0]
+            sraw = (
+                out.iloc[:, idxs[0]]
+                if len(idxs) == 1
+                else out.iloc[:, idxs].bfill(axis=1).iloc[:, 0]
+            )
             s: pd.Series
             try:
                 s = pd.to_datetime(sraw, errors="coerce")
@@ -189,14 +203,16 @@ def to_canonical(df: pd.DataFrame) -> pd.DataFrame:
                 s = pd.Series([pd.NaT] * len(out))
             # For remaining NaT, try JP-specific parser and strip memo like '(23)'
             if s.isna().any():
+
                 def _coerce(v):
                     if v is None or (isinstance(v, float) and pd.isna(v)):
                         return None
                     t = str(v).strip()
                     # remove trailing parenthetical notes like '(23)'
-                    t = t.split('(')[0].strip()
+                    t = t.split("(")[0].strip()
                     dt = parse_jp_date(t)
                     return pd.to_datetime(dt) if dt else pd.NaT
+
                 s2 = sraw.map(_coerce)
                 s = s.combine_first(s2)  # type: ignore[assignment]
             out[c] = s
@@ -223,6 +239,7 @@ def write_csv(df: pd.DataFrame, out_path: Path) -> None:
 
 
 # --- Vertical block reader for name-spanning rows layouts ---
+
 
 def _col_letter_to_index(col: str) -> int:
     """Convert Excel column letter(s) (e.g., 'A', 'C', 'AA') to 0-based index."""
@@ -257,11 +274,12 @@ def _index_to_col_letter(idx: int) -> str:
     n = idx + 1
     while n > 0:
         n, r = divmod(n - 1, 26)
-        out.append(chr(ord('A') + r))
-    return ''.join(reversed(out))
+        out.append(chr(ord("A") + r))
+    return "".join(reversed(out))
 
 
 # --- Auto detection helpers for vertical-block layout ---
+
 
 def _density(series: pd.Series) -> float:
     try:
@@ -274,6 +292,7 @@ def _looks_like_regno_token(s: Optional[str]) -> bool:
     if s is None:
         return False
     import re as _re
+
     t = str(s).strip().replace(" ", "")
     # Typical patterns: 12345, 12-3456, SE2500123, UE1100123, ME2300710 etc.
     return bool(_re.fullmatch(r"([A-Z]{1,2}\d{6,}|\d{1,6}(-\d{1,6})?)", t))
@@ -283,8 +302,11 @@ def _looks_like_dateish_token(s: Optional[str]) -> bool:
     if not s:
         return False
     import re as _re
+
     t = str(s)
-    return ("年" in t and ("月" in t or "日" in t)) or bool(_re.search(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{2}[./]\d{1,2}[./]\d{1,2}", t))
+    return ("年" in t and ("月" in t or "日" in t)) or bool(
+        _re.search(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{2}[./]\d{1,2}[./]\d{1,2}", t)
+    )
 
 
 def _is_headerish_name_token(s: Optional[str]) -> bool:
@@ -295,7 +317,7 @@ def _is_headerish_name_token(s: Optional[str]) -> bool:
         return True
     if any(k in t for k in ("氏名", "生年", "生年月日", "備考", "計画", "資格")):
         return True
-    if (t.startswith("(") and t.endswith(")")):
+    if t.startswith("(") and t.endswith(")"):
         return True
     if _looks_like_dateish_token(t):
         return True
@@ -328,11 +350,26 @@ def _label_for_block(df_all: pd.DataFrame, c0: int, c1: int) -> str:
     if any(tok in blob for tok in ["boiler", "ﾎﾞｲﾗ", "ボイラ", "ボイラー", "a-3f", "a-3v", "futsu"]):
         return "BOILER"
     # JIS-like tokens
-    if ("jis" in blob) or ("ｊｉｓ" in blob) or ("溶接" in blob) or any(tok in blob for tok in [
-        "sc-", "cn-", "mn-", "tn-", "n-3", "se", "ue", "me",
-    ]):
+    if (
+        ("jis" in blob)
+        or ("ｊｉｓ" in blob)
+        or ("溶接" in blob)
+        or any(
+            tok in blob
+            for tok in [
+                "sc-",
+                "cn-",
+                "mn-",
+                "tn-",
+                "n-3",
+                "se",
+                "ue",
+                "me",
+            ]
+        )
+    ):
         return "JIS"
-    return f"BLOCK{c0+1}"
+    return f"BLOCK{c0 + 1}"
 
 
 def detect_vertical_layout_df(
@@ -364,7 +401,11 @@ def detect_vertical_layout_df(
         s = probe.iloc[:, ci]
         score = sum(1 for v in s if _looks_like_name_token(v)) / max(1, len(s))
         name_scores[ci] = score
-    person_idx = max(name_scores, key=name_scores.get) if name_scores else max(0, regno_idx - 1)
+    person_idx = (
+        max(name_scores.items(), key=lambda item: item[1])[0]
+        if name_scores
+        else max(0, regno_idx - 1)
+    )
 
     # Build density vector for potential blocks to the right of reg/reg+1
     start_scan = max(regno_idx + 1, person_idx + 1)
@@ -385,7 +426,7 @@ def detect_vertical_layout_df(
 
     # Assign labels
     labels: list[tuple[str, tuple[int, int]]] = []
-    for (b0, b1) in blocks:
+    for b0, b1 in blocks:
         if b1 - b0 <= 0:
             continue
         lab = _label_for_block(df, b0, b1)
@@ -408,15 +449,18 @@ def detect_vertical_layout(
     max_probe_rows: int = 10,
 ) -> tuple[int, int, list[tuple[str, tuple[int, int]]]]:
     """Read the sheet with no headers and detect vertical layout components."""
-    df_raw = pd.read_excel(xls_path, sheet_name=sheet, header=None, engine=_engine_for(xls_path), dtype="object")
+    df_raw = pd.read_excel(
+        xls_path, sheet_name=sheet, header=None, engine=_engine_for(xls_path), dtype="object"
+    )
     return detect_vertical_layout_df(df_raw, max_probe_rows=max_probe_rows)
 
 
 # --- Print Area utilities ---
 
+
 def _bounds_from_a1(a1: str) -> Iterable[tuple[int, int, int, int]]:
     """Yield (r0, r1_excl, c0, c1_excl) from an A1 string (may contain multiple areas)."""
-    from openpyxl.utils.cell import range_boundaries
+    from openpyxl.utils.cell import range_boundaries  # type: ignore[import-untyped]
 
     parts = [p.strip() for p in str(a1).split(",") if p.strip()]
     for p in parts:
@@ -442,8 +486,13 @@ def get_print_areas(xls_path: Path, sheet_name: str | int) -> list[tuple[int, in
     try:
         if _engine_for(xls_path) == "openpyxl":
             from openpyxl import load_workbook  # type: ignore
+
             wb = load_workbook(filename=str(xls_path), read_only=True, data_only=True)
-            ws = wb[str(sheet_name)] if isinstance(sheet_name, str) else wb.worksheets[int(sheet_name)]
+            ws = (
+                wb[str(sheet_name)]
+                if isinstance(sheet_name, str)
+                else wb.worksheets[int(sheet_name)]
+            )
             pa = getattr(ws, "print_area", None)
             if pa:
                 try:
@@ -457,7 +506,11 @@ def get_print_areas(xls_path: Path, sheet_name: str | int) -> list[tuple[int, in
             try:
                 sheet_index = wb.sheetnames.index(ws.title)
                 for dn in wb.defined_names.definedName:
-                    if dn.name and dn.name.lower() == "print_area" and (dn.localSheetId == sheet_index or dn.localSheetId is None):
+                    if (
+                        dn.name
+                        and dn.name.lower() == "print_area"
+                        and (dn.localSheetId == sheet_index or dn.localSheetId is None)
+                    ):
                         for title, coord in dn.destinations:
                             if title == ws.title:
                                 areas.extend(list(_bounds_from_a1(coord)))
@@ -469,13 +522,18 @@ def get_print_areas(xls_path: Path, sheet_name: str | int) -> list[tuple[int, in
                 pass
         else:
             import xlrd  # type: ignore
+
             book = xlrd.open_workbook(str(xls_path), formatting_info=True)
             idx = None
             try:
-                idx = (book.sheet_names().index(sheet_name) if isinstance(sheet_name, str) else int(sheet_name))
+                idx = (
+                    book.sheet_names().index(sheet_name)
+                    if isinstance(sheet_name, str)
+                    else int(sheet_name)
+                )
             except Exception:
                 idx = 0
-            for name in (book.name_map.get("print_area") or []):
+            for name in book.name_map.get("print_area") or []:
                 try:
                     if getattr(name, "scope", None) != idx:
                         continue
@@ -523,7 +581,9 @@ def read_vertical_blocks(
       qualification (best-effort text), first_issue_date, issue_date, expiry_date.
     """
     # Read raw with no headers; we cannot rely on labeled headers in this layout
-    _df0 = pd.read_excel(xls_path, sheet_name=sheet, header=None, engine=_engine_for(xls_path), dtype="object")
+    _df0 = pd.read_excel(
+        xls_path, sheet_name=sheet, header=None, engine=_engine_for(xls_path), dtype="object"
+    )
     # Preserve original row indices for active/retired marking via print area
     mask_nonempty = ~_df0.isna().all(axis=1)
     orig_row_index = _df0.index[mask_nonempty].tolist()
@@ -531,7 +591,9 @@ def read_vertical_blocks(
     # Auto-detection mode: if caller passed special tokens or empty blocks, probe layout
     auto_person = str(person_col).strip().upper() in {"", "AUTO"}
     auto_regno = str(regno_col).strip().upper() in {"", "AUTO"}
-    auto_blocks = (not blocks) or (len(blocks) == 1 and blocks[0][1].strip().upper() in {"AUTO", ""})
+    auto_blocks = (not blocks) or (
+        len(blocks) == 1 and blocks[0][1].strip().upper() in {"AUTO", ""}
+    )
     if auto_person or auto_regno or auto_blocks:
         p_idx, r_idx, detected = detect_vertical_layout_df(df_raw, max_probe_rows=max_probe_rows)
         if auto_person:
@@ -539,26 +601,36 @@ def read_vertical_blocks(
         if auto_regno:
             regno_col = _index_to_col_letter(r_idx)
         if auto_blocks:
-            blocks = [(lab, f"{_index_to_col_letter(a)}:{_index_to_col_letter(b-1)}") for lab, (a, b) in detected]
+            blocks = [
+                (lab, f"{_index_to_col_letter(a)}:{_index_to_col_letter(b - 1)}")
+                for lab, (a, b) in detected
+            ]
     # (already dropped empty rows above)
 
     p_idx = _col_letter_to_index(person_col)
     r_idx = _col_letter_to_index(regno_col)
-    block_defs: list[tuple[str, tuple[int, int]]] = [(lab, _parse_col_range(rng)) for lab, rng in blocks]
+    block_defs: list[tuple[str, tuple[int, int]]] = [
+        (lab, _parse_col_range(rng)) for lab, rng in blocks
+    ]
 
     # Helpers
     import re
+
     def _looks_like_regno(s: Optional[str]) -> bool:
         if s is None:
             return False
         t = str(s).strip().replace(" ", "")
         return bool(re.fullmatch(r"[0-9０-９]{1,6}(-[0-9０-９]+)?", t))
+
     def _looks_like_dateish(s: Optional[str]) -> bool:
         if not s:
             return False
         t = str(s)
         # quick hits: contains 年 or yyyy-mm-dd or yy.mm.dd
-        return ("年" in t and ("月" in t or "日" in t)) or bool(re.search(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{2}[./]\d{1,2}[./]\d{1,2}", t))
+        return ("年" in t and ("月" in t or "日" in t)) or bool(
+            re.search(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{2}[./]\d{1,2}[./]\d{1,2}", t)
+        )
+
     def _is_headerish_name(s: Optional[str]) -> bool:
         if not s:
             return True
@@ -567,7 +639,7 @@ def read_vertical_blocks(
             return True
         if any(k in t for k in ("氏名", "生年", "西暦", "証明", "溶接", "会社")):
             return True
-        if (t.startswith("(") and t.endswith(")")):
+        if t.startswith("(") and t.endswith(")"):
             return True
         if _looks_like_dateish(t):
             return True
@@ -632,7 +704,9 @@ def read_vertical_blocks(
                 continue
 
             # Build raw mapping and derive fields
-            raw_map = {f"c{idx}": (None if pd.isna(v) else str(v).strip()) for idx, v in enumerate(vals)}
+            raw_map = {
+                f"c{idx}": (None if pd.isna(v) else str(v).strip()) for idx, v in enumerate(vals)
+            }
             # Extract dates found in any cell of this block
             date_candidates: list[pd.Timestamp] = []
             for v in raw_map.values():
@@ -653,7 +727,11 @@ def read_vertical_blocks(
             issue: Optional[pd.Timestamp] = None
             expiry: Optional[pd.Timestamp] = None
             if len(date_candidates) >= 3:
-                first_issue, issue, expiry = date_candidates[0], date_candidates[-2], date_candidates[-1]
+                first_issue, issue, expiry = (
+                    date_candidates[0],
+                    date_candidates[-2],
+                    date_candidates[-1],
+                )
             elif len(date_candidates) == 2:
                 first_issue, expiry = date_candidates[0], date_candidates[1]
             elif len(date_candidates) == 1:
@@ -676,7 +754,9 @@ def read_vertical_blocks(
                         continue
                 except Exception:
                     pass
-                if any(tok in v for tok in ("登録", "継続", "交付", "有効", "年月", "年", "月", "日")):
+                if any(
+                    tok in v for tok in ("登録", "継続", "交付", "有効", "年月", "年", "月", "日")
+                ):
                     # likely label remnants, skip
                     continue
                 non_date_texts.append(v)
@@ -684,6 +764,7 @@ def read_vertical_blocks(
 
             # Extract issuance year from any trailing parentheses like '(23)' in the block
             import re as _re
+
             def _paren_year(val: Any) -> Optional[int]:
                 try:
                     s = str(val)
@@ -701,6 +782,7 @@ def read_vertical_blocks(
                 except Exception:
                     return None
                 return (2000 + n) if len(yy) <= 2 else n
+
             issue_year = None
             for v in raw_map.values():
                 y = _paren_year(v)
@@ -719,7 +801,9 @@ def read_vertical_blocks(
                 "used_col_min": (min(used_cols_abs) if used_cols_abs else None),
                 "used_col_max": (max(used_cols_abs) if used_cols_abs else None),
                 "qualification": qualification,
-                "first_issue_date": first_issue if (first_issue is not None and pd.notna(first_issue)) else None,
+                "first_issue_date": first_issue
+                if (first_issue is not None and pd.notna(first_issue))
+                else None,
                 "issue_date": issue if (issue is not None and pd.notna(issue)) else None,
                 "expiry_date": expiry if (expiry is not None and pd.notna(expiry)) else None,
                 "values": raw_map,

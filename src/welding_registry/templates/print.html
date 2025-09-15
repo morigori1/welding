@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    <style>
+      @page { size: A4 {% if orientation=='landscape' %}landscape{% else %}portrait{% endif %}; margin: 12mm; }
+      @media print {
+        .noprint{ display:none }
+      }
+      body{font-family:system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans JP', sans-serif; margin:0}
+      .toolbar{padding:10px;background:#f7f7f7;border-bottom:1px solid #ddd}
+      .page{ page-break-after: always; padding:0 }
+      .head{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:6px }
+      .title{ font-size:16px; font-weight:600 }
+      .meta{ color:#555; font-size:12px }
+      table{ border-collapse:collapse; width:100%; }
+      th,td{ border:1px solid #999; padding:4px 6px; font-size:12px }
+      th{ background:#f2f2f2 }
+      /* approximate Excel-like fixed widths for portrait */
+      .col-name{ width: 46mm }
+      .col-birth{ width: 12mm; text-align:center }
+      .col-qual{ width: 48mm }
+      .col-lic { width: 26mm }
+      .col-exp { width: 20mm; text-align:center }
+      .col-days{ width: 12mm; text-align: right }
+      .col-stage{ width: 12mm; text-transform: lowercase; color:#555; text-align:center }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar noprint">
+      <b>{{ title }}</b>
+      <span style="margin-left:10px;color:#666">行/頁: {{ rows_per_page }} / 方向: {{ '横' if orientation=='landscape' else '縦' }}{% if q %} / 検索: {{ q }}{% endif %}{% if only_active %} / 在籍のみ{% endif %}</span>
+      <button onclick="window.print()" style="float:right">印刷</button>
+    </div>
+    {% if not pages %}
+      <p style="margin:12px">表示できる行がありません。</p>
+    {% endif %}
+    {% for p in pages %}
+      <div class="page">
+        <div class="head">
+          <div class="title">{{ title }}</div>
+          <div class="meta">{{ loop.index }} / {{ total }}&nbsp;&nbsp;|&nbsp;{{ now }}</div>
+        </div>
+        <table>
+          <tr>
+            <th class="col-name">氏名</th>
+            <th class="col-birth">生年</th>
+            <th class="col-qual">資格</th>
+            <th class="col-lic">登録番号</th>
+            <th class="col-exp">有効期限</th>
+            <th class="col-days">残日数</th>
+            <th class="col-stage">通知</th>
+          </tr>
+          {% for r in p.rows %}
+            <tr>
+              <td class="col-name">{{ r.get('name') or '' }}</td>
+              <td class="col-birth">{{ r.get('birth_year_west') or '' }}</td>
+              <td class="col-qual">{{ r.get('qualification') or '' }}</td>
+              <td class="col-lic">{{ r.get('license_no') or '' }}</td>
+              <td class="col-exp">{{ r.get('expiry_date') or '' }}</td>
+              <td class="col-days">{{ r.get('days_to_expiry') or '' }}</td>
+              <td class="col-stage">{%
+                set st = r.get('notice_stage','') %}{{
+                {'first':'一次','second':'二次','final':'最終','expired':'期限切れ','same-day':'当日'}.get(st, st)
+              }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    {% endfor %}
+  </body>
+ </html>

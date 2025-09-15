@@ -10,21 +10,69 @@ def test_detect_vertical_layout_basic():
     # Columns: A (name), B (regno), C..H (JIS), I..K (BOILER)
     rows = []
     # row0: pseudo headers
-    rows.append([
-        "氏名", "登録番号", "JIS", None, None, None, None, None, "BOILER", None, None,
-    ])
+    rows.append(
+        [
+            "氏名",
+            "登録番号",
+            "JIS",
+            None,
+            None,
+            None,
+            None,
+            None,
+            "BOILER",
+            None,
+            None,
+        ]
+    )
     # row1: person 1
-    rows.append([
-        "YAMADA TARO", "12345", "SC-3F", "2019-05-31", "2022-05-31", None, None, None, "A-3F", "2020-12-01", "2023-12-01",
-    ])
+    rows.append(
+        [
+            "YAMADA TARO",
+            "12345",
+            "SC-3F",
+            "2019-05-31",
+            "2022-05-31",
+            None,
+            None,
+            None,
+            "A-3F",
+            "2020-12-01",
+            "2023-12-01",
+        ]
+    )
     # row2: continuation (empty name/regno)
-    rows.append([
-        None, None, None, None, None, None, None, None, None, None, None,
-    ])
+    rows.append(
+        [
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+    )
     # row3: person 2
-    rows.append([
-        "SUZUKI ICHIRO", "67890", "SC-3V", "2021-01-01", "2024-01-01", None, None, None, "A-3V", "2022-01-15", "2025-01-15",
-    ])
+    rows.append(
+        [
+            "SUZUKI ICHIRO",
+            "67890",
+            "SC-3V",
+            "2021-01-01",
+            "2024-01-01",
+            None,
+            None,
+            None,
+            "A-3V",
+            "2022-01-15",
+            "2025-01-15",
+        ]
+    )
 
     df = pd.DataFrame(rows)
 

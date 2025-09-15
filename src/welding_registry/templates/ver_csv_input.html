@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>CSV 入力（版管理）</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+  </style>
+</head>
+<body>
+  <h1>CSV 入力（版管理）</h1>
+  <div>
+    <a href="/ver">一覧登録へ</a>
+  </div>
+  <p>ヘッダは次のいずれか：日本語（氏名/登録番号/資格/区分/初回交付/交付日/有効期限）または英語（name/license_no/qualification/category/first_issue_date/issue_date/expiry_date）。</p>
+  <form action="/ver/csv/preview" method="post" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv" required>
+    登録日（任意）<input type="date" name="date">
+    <button type="submit">差分を確認</button>
+  </form>
+</body>
+</html>
+

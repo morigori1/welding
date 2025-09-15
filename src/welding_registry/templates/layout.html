@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title or '溶接 資格管理' }}</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',sans-serif;margin:20px}
+    a{ text-decoration:none }
+    nav a{ margin-right: 10px; }
+    table{ border-collapse: collapse }
+    th,td{ border:1px solid #ddd; padding:6px 8px }
+    th{ background:#f5f5f5 }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">トップ</a>
+    <a href="/ver">一覧登録</a>
+    <a href="/ver/csv">CSV入力</a>
+    <a href="/ver/editor">印刷用エディタ</a>
+  </nav>
+  {% block body %}{% endblock %}
+</body>
+</html>
+

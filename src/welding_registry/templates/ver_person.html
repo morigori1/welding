@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>個人確認（版管理）</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; }
+    th { background: #f3f3f3; }
+  </style>
+</head>
+<body>
+  <h1>個人確認（版管理）</h1>
+  <div>
+    <a href="/ver">一覧登録へ</a>
+  </div>
+  <form action="/ver/person" method="get">
+    氏名 <input type="text" name="name" value="{{ name }}" required>
+    日付 <input type="date" name="date" value="{{ date }}">
+    <button type="submit">再表示</button>
+  </form>
+
+  {% if rows %}
+  <h2>{{ name }} の {{ date }} 時点の資格</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>資格</th><th>登録番号</th><th>区分</th>
+        <th>初回交付</th><th>交付日</th><th>有効期限</th>
+        <th>有効自</th><th>有効至</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.qualification }}</td>
+        <td>{{ r.license_no }}</td>
+        <td>{{ r.category }}</td>
+        <td>{{ r.first_issue_date }}</td>
+        <td>{{ r.issue_date }}</td>
+        <td>{{ r.expiry_date }}</td>
+        <td>{{ r.valid_from }}</td>
+        <td>{{ r.valid_to }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p>該当データがありません。</p>
+  {% endif %}
+</body>
+</html>
+

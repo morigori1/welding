@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "welding-registry"
+version = "0.1.0"
+description = "Utilities to ingest and manage welding qualification rosters (Excel/PDF)"
+requires-python = ">=3.11"
+dependencies = [
+  "pandas>=2.2",
+  "xlrd>=2.0.1",
+  "openpyxl>=3.1",
+  "sqlalchemy>=2.0",
+  "pdfplumber>=0.11",
+  "PyYAML>=6.0",
+  "pytesseract>=0.3.13",
+  "python-dotenv>=1.0",
+  "duckdb>=1.0",
+  "requests>=2.31",
+  "Flask>=2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  "ruff>=0.5",
+  "mypy>=1.11",
+  "hypothesis>=6",
+  "types-PyYAML>=6",
+  "pandas-stubs>=2.2",
+  "types-requests>=2.31",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+  ".venv*",
+  ".mypy_cache",
+  ".pytest_cache",
+  "out",
+  "warehouse",
+  "data",
+]
+
+[tool.ruff.lint]
+per-file-ignores = { "src/welding_registry/field_map.py" = ["E741"] }
+
+[tool.pytest.ini_options]
+addopts = "-q"

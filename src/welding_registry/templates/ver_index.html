@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>版管理 一覧登録</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; }
+    th { background: #f3f3f3; }
+    form { margin: 12px 0; }
+    .actions a { margin-right: 10px; }
+  </style>
+  </head>
+<body>
+  <h1>版管理：一覧登録</h1>
+  <div class="actions">
+    <a href="/">トップ</a>
+    <a href="/ver/xlsx">Excel入力</a>
+    <a href="/ver/csv">CSV入力</a>
+    <a href="/ver/editor">印刷用エディタ</a>
+  </div>
+
+  <h2>スナップショット登録（Excel/CSV）</h2>
+  <form action="/ver/snapshot" method="post" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+    登録日（任意）<input type="date" name="date">
+    <button type="submit">登録</button>
+  </form>
+
+  <h2>登録済みスナップショット</h2>
+  <table>
+    <thead>
+      <tr><th>ID</th><th>日付</th><th>件数</th><th>ソース</th></tr>
+    </thead>
+    <tbody>
+      {% for s in snapshots %}
+      <tr>
+        <td>{{ s.snapshot_id }}</td>
+        <td>{{ s.snapshot_date }}</td>
+        <td>{{ s.row_count }}</td>
+        <td>{{ s.source_path }}</td>
+      </tr>
+      {% endfor %}
+      {% if not snapshots %}
+      <tr><td colspan="4">まだ登録がありません。</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <h2>個人確認</h2>
+  <form action="/ver/person" method="get">
+    氏名 <input type="text" name="name" placeholder="例：山田 太郎" required>
+    日付 <input type="date" name="date">
+    <button type="submit">表示</button>
+  </form>
+</body>
+</html>

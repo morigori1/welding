@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <title>期限レポート</title>
+    <style>
+      body{font-family:system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans JP', sans-serif; margin:20px}
+      table{border-collapse:collapse;margin-top:12px;width:100%}
+      th,td{border:1px solid #ddd;padding:6px 8px}
+      th{background:#f5f5f5}
+      .kpis{display:flex;gap:12px;margin:8px 0}
+      .kpi{background:#f7f9fc;border:1px solid #e5e9f0;border-radius:8px;padding:8px 12px}
+      .muted{color:#666}
+      a{text-decoration:none}
+    </style>
+  </head>
+  <body>
+    <p>
+      <a href="{{ url_for('index') }}">人別一覧</a> | 
+      <a href="{{ url_for('input_form') }}">手入力</a> |
+      <a href="{{ url_for('report_print') }}?rows=35&ori=portrait" target="_blank">印刷ビュー</a>
+    </p>
+    <h3>期限レポート</h3>
+    {% if rows %}
+      <div class="kpis">
+        <div class="kpi">first: <b>{{ counts.get('first', 0) }}</b></div>
+        <div class="kpi">second: <b>{{ counts.get('second', 0) }}</b></div>
+        <div class="kpi">final: <b>{{ counts.get('final', 0) }}</b></div>
+        <div class="kpi">expired: <b>{{ counts.get('expired', 0) }}</b></div>
+      </div>
+      <table>
+        <tr>
+          <th>氏名</th><th>生年</th><th>資格</th><th>登録番号</th><th>有効期限</th><th>残日数</th><th>通知</th>
+        </tr>
+        {% for r in rows %}
+          <tr>
+            <td><a href="{{ url_for('person') }}?name={{ r.get('name') or '' }}">{{ r.get('name') or '' }}</a></td>
+            <td>{{ r.get('birth_year_west') or '' }}</td>
+            <td>{{ r.get('qualification') or '' }}</td>
+            <td>{{ r.get('license_no') or '' }}</td>
+            <td>{{ r.get('expiry_date') or '' }}</td>
+            <td style="text-align:right">{{ r.get('days_to_expiry') or '' }}</td>
+            <td class="muted">{%
+              set st = r.get('notice_stage') or '' %}{{
+              {'first':'一次','second':'二次','final':'最終','expired':'期限切れ','same-day':'当日'}.get(st, st)
+            }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    {% else %}
+      <p class="muted">ロスターに有効期限のあるデータが見つかりません。`due` コマンドで作成した `due` テーブルがあれば自動表示します。</p>
+    {% endif %}
+  </body>
+ </html>

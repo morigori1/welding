@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>CSV 差分確認</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+    pre { background: #f7f7f7; padding: 10px; border: 1px solid #ddd; }
+    .cols { display: flex; gap: 24px; }
+    .col { flex: 1; }
+  </style>
+</head>
+<body>
+  <h1>CSV 差分確認</h1>
+  <div>
+    <a href="/ver/csv">← CSV入力に戻る</a>
+  </div>
+  <p>ファイル: {{ filename }} / 登録日: {{ date or '(未指定: 現在時刻)' }}</p>
+  <div class="cols">
+    <div class="col">
+      <h2>追加されるレコード ({{ added|length }})</h2>
+      <pre>{% for k in added %}{{ k }}
+{% endfor %}</pre>
+    </div>
+    <div class="col">
+      <h2>削除されるレコード ({{ removed|length }})</h2>
+      <pre>{% for k in removed %}{{ k }}
+{% endfor %}</pre>
+    </div>
+    <div class="col">
+      <h2>更新されるレコード ({{ changed|length }})</h2>
+      <pre>{% for k in changed %}{{ k }}
+{% endfor %}</pre>
+    </div>
+  </div>
+
+  <form action="/ver/csv/commit" method="post">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="date" value="{{ date }}">
+    <button type="submit">この内容で登録</button>
+  </form>
+</body>
+</html>

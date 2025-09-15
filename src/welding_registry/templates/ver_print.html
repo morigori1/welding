@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>印刷プレビュー</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    .noprint { margin-bottom: 10px; }
+    @media print { .noprint { display: none; } }
+    table { border-collapse: collapse; width: 100%; page-break-inside: avoid; }
+    th, td { border: 1px solid #444; padding: 4px 6px; font-size: 12px; }
+    th { background: #eee; }
+  </style>
+</head>
+<body>
+  <div class="noprint">
+    <a href="/ver/editor">← エディタに戻る</a>
+    <button onclick="window.print()">印刷</button>
+  </div>
+
+  <h2>{{ date }} 時点の資格一覧（{{ '人' if mode=='person' else '資格' }}で選択）</h2>
+  {% if operator %}<div>担当者: {{ operator }}</div>{% endif %}
+  {% if mode == 'person' %}
+    <div>対象者: {{ persons|join(', ') }}</div>
+  {% else %}
+    <div>対象資格: {{ quals|join(', ') }}</div>
+  {% endif %}
+
+  <div class="noprint" style="margin:8px 0;">
+    <form action="/ver/editor/preview" method="post">
+      <input type="hidden" name="date" value="{{ date }}">
+      <input type="hidden" name="mode" value="{{ mode }}">
+      <input type="hidden" name="operator" value="{{ operator }}">
+      <input type="hidden" name="qual_filter" value="{{ qual_filter }}">
+      {% for p in persons %}<input type="hidden" name="persons" value="{{ p }}">{% endfor %}
+      {% for q in quals %}<input type="hidden" name="quals" value="{{ q }}">{% endfor %}
+      行数/ページ: <input type="number" name="rows_per_page" value="{{ rows_per_page or 40 }}" min="10" max="100">
+      <button type="submit">再プレビュー</button>
+      <div style="margin-top:6px;">
+        {% if pages %}
+          {% for pg in pages %}
+            {% for r in pg.rows %}
+              <input type="checkbox" name="rowsel" value="{{ r.rec_key }}" checked style="display:none">
+            {% endfor %}
+          {% endfor %}
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  {% if pages %}
+    {% for pg in pages %}
+      <h3>Page {{ pg.no }}</h3>
+      <table>
+        <thead>
+          <tr>
+            <th class="noprint">出力</th>
+            <th>氏名</th>
+            <th>所属</th>
+            <th>登録番号</th>
+            <th>資格</th>
+            <th>区分</th>
+            <th>初回交付</th>
+            <th>交付日</th>
+            <th>有効期限</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in pg.rows %}
+          <tr>
+            <td class="noprint"><input type="checkbox" name="rowsel" value="{{ r.rec_key }}" checked></td>
+            <td>{{ r.name }}</td>
+            <td>{{ r.dept or '' }}</td>
+            <td>{{ r.license_no }}</td>
+            <td>{{ r.qualification }}</td>
+            <td>{{ r.category }}</td>
+            <td>{{ r.first_issue_date }}</td>
+            <td>{{ r.issue_date }}</td>
+            <td>{{ r.expiry_date }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div style="page-break-after: always;"></div>
+    {% endfor %}
+  {% else %}
+    <p>対象の行がありません。</p>
+  {% endif %}
+
+  <div class="noprint" style="margin-top:12px;">
+    <form action="/ver/editor/save" method="post">
+      <input type="hidden" name="date" value="{{ date }}">
+      <input type="hidden" name="mode" value="{{ mode }}">
+      <input type="hidden" name="operator" value="{{ operator }}">
+      <input type="hidden" name="session_id" value="{{ session_id }}">
+      {% for p in persons %}<input type="hidden" name="persons" value="{{ p }}">{% endfor %}
+      {% for q in quals %}<input type="hidden" name="quals" value="{{ q }}">{% endfor %}
+      {% if pages %}
+        {% for pg in pages %}
+          {% for r in pg.rows %}
+            <input type="hidden" name="rowsel" value="{{ r.rec_key }}">
+          {% endfor %}
+        {% endfor %}
+      {% endif %}
+      <button type="submit">この内容を記録</button>
+    </form>
+  </div>
+</body>
+</html>

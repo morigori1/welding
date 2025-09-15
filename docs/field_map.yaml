@@ -1,0 +1,21 @@
+# Canonical field names and example Japanese headers used in rosters.
+# Extend this map as new files/sheets are encountered.
+
+name: ["氏名", "名前", "氏名(漢字)"]
+kana: ["ﾌﾘｶﾞﾅ", "フリガナ", "ふりがな", "ｶﾅ"]
+birth_date: ["生年月日", "生年月日(西暦)"]
+birth_year_west: ["生年・西暦", "生年(西暦)"]
+license_no: ["登録番号", "免許番号", "資格番号", "登録No.", "登録№", "No.", "番号"]
+qualification: ["資格", "資格種別", "資格名称"]
+process: ["溶接方法", "プロセス"]
+material: ["材質", "材料", "母材"]
+thickness: ["板厚", "径", "t", "厚さ"]
+test_date: ["試験日", "受験日", "実施日", "テスト日"]
+# 継続/交付は更新側の日付として issue_date に統一
+issue_date: ["継続年月日", "交付年月日", "交付日", "発行日", "更新日", "発行年月日"]
+# 登録/取得は初回付与日として first_issue_date に統一
+first_issue_date: ["登録年月日", "取得年月日", "登録日", "取得日", "初回取得日"]
+# 有効期限
+expiry_date: ["有効年月日", "有効期限", "有効期限日", "有効期間", "有効期間満了日", "満了日"]
+result: ["試験結果", "結果", "合否"]
+notes: ["備考", "メモ"]

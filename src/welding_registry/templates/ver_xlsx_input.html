@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Excel 入力（版管理）</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Excel 入力（版管理）</h1>
+  <div>
+    <a href="/ver">一覧登録へ</a>
+  </div>
+  <p>対象ファイル: 資格一覧.xlsx（シート未指定時は先頭シート）</p>
+  <form action="/ver/xlsx/preview" method="post" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".xlsx,.xls" required>
+    シート名（任意）<input type="text" name="sheet" placeholder="例：P1">
+    登録日（任意）<input type="date" name="date">
+    <button type="submit">差分を確認</button>
+  </form>
+</body>
+</html>
+
