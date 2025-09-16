@@ -31,6 +31,7 @@ dev = [
   "types-PyYAML>=6",
   "pandas-stubs>=2.2",
   "types-requests>=2.31",
+  "pyinstaller>=6.0",
 ]
 
 [tool.ruff]
@@ -50,3 +51,4 @@ per-file-ignores = { "src/welding_registry/field_map.py" = ["E741"] }
 
 [tool.pytest.ini_options]
 addopts = "-q"
+

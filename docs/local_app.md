@@ -39,3 +39,14 @@ python -m welding_registry gui --duckdb warehouse/local.duckdb
 - ローカル版は Flask サーバを起動せず、Jinja2 テンプレートを直接レンダリングして印刷HTMLを生成します。
 - ワーカー情報の付与（enrich）は従来通り CLI (`python -m welding_registry enrich --workers-csv ... --duckdb ...`) を先に実行してください。
 
+## ポータブルZIPパッケージ (Windows)
+
+PyInstaller を使って Python 本体ごと持ち運べる ZIP を作成できます。
+
+1. PowerShell (x64) でリポジトリ直下に移動します (`Set-Location C:\welding`)。
+2. 仮想環境を作成・有効化します (`py -3.11 -m venv .venv; .\.venv\Scripts\Activate.ps1`)。
+3. 依存をインストールします (`pip install -e .[dev]`)。
+4. `powershell -ExecutionPolicy Bypass -File .\scripts\build_portable_zip.ps1` を実行します (既定で .venv の Python を使用)。
+5. `dist\welding-portable.zip` が生成されます。展開すると `welding-gui\welding-gui.exe` (GUI) と `welding-cli\welding-cli.exe` (CLI) が利用できます。
+
+※ Tesseract OCR 本体は同梱されません。必要に応じて別途インストールし、`TESSERACT_CMD` を設定してください。
