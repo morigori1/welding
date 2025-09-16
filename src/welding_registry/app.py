@@ -20,14 +20,16 @@ from .csvdb import (
     log_display_selection,
 )
 from .io_excel import to_canonical
+from .paths import resolve_duckdb_path, resolve_review_db_path
+from .warehouse import materialize_roster_all
 import pandas as _pd
 import uuid
 from werkzeug.utils import secure_filename
 
 
 def create_app(warehouse: Optional[Path] = None, review_db: Optional[Path] = None) -> Flask:
-    wh = warehouse or Path(os.getenv("DUCKDB_DB_PATH") or "warehouse/local.duckdb")
-    rv = review_db or Path("warehouse/review.sqlite")
+    wh = resolve_duckdb_path(warehouse)
+    rv = resolve_review_db_path(review_db)
     app = Flask(__name__)
     store = ReviewStore(rv)
 
@@ -893,6 +895,7 @@ def create_app(warehouse: Optional[Path] = None, review_db: Optional[Path] = Non
                     expiry_date,
                 ],
             )
+        materialize_roster_all(wh)
         return redirect(url_for("person") + f"?name={name}")
 
     _register_error_handlers(app)

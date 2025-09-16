@@ -1,53 +1,42 @@
-# ローカルアプリ版（Tkinter）
+# ローカルアプリ (Tkinter)
 
-サーバを立てずに、PC上で完結するローカルGUIです。既存のETL/計算ロジックをそのまま再利用しています。
+PC 上で名簿の取り込み・フィルタ調整・発行履歴管理を完結できるデスクトップ GUI です。Excel → DuckDB の ETL や期限算出は CLI/Web 版と共通のロジックを利用します。
 
 ## 起動
 
-- 仮想環境でパッケージをインストール済みであること（`pip install -e .[dev]`）。
-- コマンド:
-
-```
+```powershell
 python -m welding_registry gui --duckdb warehouse/local.duckdb
 ```
 
-`--duckdb` を省略した場合、環境変数 `DUCKDB_DB_PATH` または `warehouse/local.duckdb` を使用します。
+`--duckdb` を省略した場合は環境変数 `DUCKDB_DB_PATH` または `warehouse/local.duckdb` を使用します。Tk ランタイムが無い Linux では `python3-tk` 等を追加インストールしてください。
 
-> 注意: 一部のLinuxでは Tkinter が同梱されていない場合があります。その場合は OS パッケージの `tk` を追加インストールしてください。
+## 画面構成
 
-## 主な機能
+GUI は 3 つのタブに分かれています。
 
-- データベース: DuckDBファイルの選択/作成
-- 取込:
-  - 通常の横持ちExcelの取込（シートとヘッダー行の指定可→正規化してDuckDBに保存）
-  - 縦レイアウト（A列=氏名）対応: 氏名列/番号列、JIS/ボイラのブロック範囲（例: `C:H`, `I:K`）を指定して取込
-  - 取込結果は `out/roster.csv` / `out/roster.xlsx` にも保存
-- 期限レポート:
-  - `roster` テーブルから 90日ウィンドウで `due` を作成し DuckDB に保存
-  - `roster_enriched` がある場合は `birth_year_west` を自動で左結合
-  - 画面内プレビュー、CSV/ICS出力、印刷プレビュー（HTML生成）
+- **登録**: DuckDB ファイルの選択・Excel 取り込み・期限計算を実行します。従来のホーム画面をそのまま移設しており、垂直レイアウト取込や CSV/Excel 出力もここで行います。
+- **全体リスト**: DuckDB 内の `roster` と `roster_manual` を統合した一覧を人単位で表示します。左ペインで掲載／非掲載をまとめて切り替え、右ペインで資格ごとの掲載フラグや手修正履歴を確認・追加できます。フィルタは `issue_person_filter` / `issue_license_filter` に保存され、発行タブや CLI 側にも反映されます。
+- **発行**: フィルタ適用後の `due` テーブルを確認し、CSV/ICS/帳票出力を行います。`発行` ボタンで現在のリストをスナップショットとして `issue_runs` / `issue_run_items` に保存し、右側の履歴リストから過去回の確認・再出力が可能です。
 
-## ワークフロー例
+## ワークフロー
 
-1. ホームタブで Excel を指定し「取込→DuckDB」
-2. 同タブで「期限を計算」→ レポートタブに反映
-3. レポートタブで「印刷プレビュー」を押すと `out/print_report.html` が開き、ブラウザから印刷可能
+1. **登録タブ**で Excel を選択し、`名簿をDuckDB` → `期限を計算` を実行します。
+2. **全体リストタブ**で人／資格ごとの掲載可否を調整し、必要に応じて「手修正」から `roster_manual` に追記します。
+3. **発行タブ**で `再読込` → `発行` を押して履歴に記録し、CSV/ICS/帳票を出力します。履歴を選択すると過去のスナップショットに切り替わり、現在のフィルタに依存せず再出力できます。
 
-## 既存CLIとの関係
+## CLI との連携
 
-- Web版 (`python -m welding_registry app`) はそのまま利用可能です。
-- ローカル版は Flask サーバを起動せず、Jinja2 テンプレートを直接レンダリングして印刷HTMLを生成します。
-- ワーカー情報の付与（enrich）は従来通り CLI (`python -m welding_registry enrich --workers-csv ... --duckdb ...`) を先に実行してください。
+- Web 版 (`python -m welding_registry app`) と同じ DuckDB を共有できます。
+- CLI の `ingest` / `due` コマンドで更新した場合も、GUI の `再読込` ボタンで最新状態に同期されます。
 
-## ポータブルZIPパッケージ (Windows)
+## ポータブル ZIP (Windows)
 
-PyInstaller を使って Python 本体ごと持ち運べる ZIP を作成できます。
+PyInstaller のビルドスクリプトで GUI/CLI を同梱した ZIP を作成できます。
 
-1. PowerShell (x64) でリポジトリ直下に移動します (`Set-Location C:\welding`)。
-2. 仮想環境を作成・有効化します (`py -3.11 -m venv .venv; .\.venv\Scripts\Activate.ps1`)。
-3. 依存をインストールします (`pip install -e .[dev]`)。
-4. `powershell -ExecutionPolicy Bypass -File .\scripts\build_portable_zip.ps1` を実行します (既定で .venv の Python を使用)。
-5. `dist\welding-portable.zip` が生成されます。展開すると `welding-gui\welding-gui.exe` (GUI) と `welding-cli\welding-cli.exe` (CLI) が利用できます。
-6. `warehouse/local.duckdb` が同梱されるため、既存の DuckDB を差し替える場合はこのファイルを入れ替えてください。
+1. PowerShell (x64) でリポジトリへ移動: `Set-Location C:\welding`
+2. 仮想環境を作成して有効化: `py -3.11 -m venv .venv; .\.venv\Scripts\Activate.ps1`
+3. 依存関係をインストール: `pip install -e .[dev]`
+4. `powershell -ExecutionPolicy Bypass -File .\scripts\build_portable_zip.ps1`
+5. `dist\welding-portable.zip` に `welding-gui.exe` / `welding-cli.exe` と `warehouse\local.duckdb` が含まれます。DuckDB を差し替えたい場合は `warehouse/local.duckdb` を更新してから再実行してください。
 
-※ Tesseract OCR 本体は同梱されません。必要に応じて別途インストールし、`TESSERACT_CMD` を設定してください。
+Tesseract OCR を利用する場合は適宜パスを環境変数 `TESSERACT_CMD` に設定してください。

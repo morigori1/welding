@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+from typing import Optional
 import sys
 
 import pandas as pd
@@ -31,7 +32,9 @@ from .licenses import (
 )
 from .xdw import batch_convert, find_dwviewer
 from .db import to_sqlite, to_duckdb, read_sqlserver_table
+from .paths import resolve_duckdb_path, resolve_review_db_path
 from .review import ReviewStore
+from .warehouse import materialize_roster_all, write_due_tables
 
 
 def cmd_enrich(args: argparse.Namespace) -> int:
@@ -107,9 +110,7 @@ def cmd_enrich(args: argparse.Namespace) -> int:
             c for c in ["name", "employee_id", "birth_date", "birth_year_west"] if c in wdf.columns
         ]
         merged = roster.merge(wdf[on + cols], on=on, how="left", suffixes=("", "_w"))
-        outp = Path(
-            getattr(args, "duckdb", None) or os.getenv("DUCKDB_DB_PATH") or "warehouse/local.duckdb"
-        )
+        outp = resolve_duckdb_path(getattr(args, "duckdb", None))
         _to_duckdb(merged, outp, table="roster_enriched")
         print(f"Wrote 'roster_enriched' ({len(merged)} rows) to {outp}")
         return 0
@@ -224,9 +225,10 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     # SQLite / DuckDB
     if args.sqlite:
         to_sqlite(df, Path(args.sqlite))
-    duckdb_path = getattr(args, "duckdb", None) or os.getenv("DUCKDB_DB_PATH")
+    duckdb_path = _duckdb_path_from_args(args)
     if duckdb_path:
-        to_duckdb(df, Path(duckdb_path))
+        to_duckdb(df, duckdb_path)
+        materialize_roster_all(duckdb_path)
 
     print(f"Ingested sheet '{sheet}' (header row {header_row}); wrote {outdir}")
     if args.sqlite:
@@ -413,9 +415,10 @@ def cmd_ingest_vertical(args: argparse.Namespace) -> int:
         write_csv(df2, outdir / "roster_raw.csv")
 
     # Warehouse
-    duckdb_path = getattr(args, "duckdb", None) or os.getenv("DUCKDB_DB_PATH")
+    duckdb_path = _duckdb_path_from_args(args)
     if duckdb_path:
-        to_duckdb(df_roster, Path(duckdb_path))
+        to_duckdb(df_roster, duckdb_path)
+        materialize_roster_all(duckdb_path)
         print(f"DuckDB: {duckdb_path} (table 'roster')")
 
     sheets_info = ",".join(map(str, target_sheets))
@@ -480,8 +483,8 @@ def cmd_pdfdates(args: argparse.Namespace) -> int:
 def cmd_app(args: argparse.Namespace) -> int:
     from .app import run as run_app
 
-    wh = Path(args.duckdb) if getattr(args, "duckdb", None) else None
-    rv = Path(args.review_db) if getattr(args, "review_db", None) else None
+    wh = _duckdb_path_from_args(args, allow_default=True)
+    rv = resolve_review_db_path(getattr(args, "review_db", None))
     run_app(host=args.host, port=int(args.port), warehouse=wh, review_db=rv)
     return 0
 
@@ -490,7 +493,7 @@ def cmd_gui(args: argparse.Namespace) -> int:
     # Lazy import to avoid requiring Tk on environments that use only CLI/web
     from . import gui as _gui  # local import intentional to avoid Tk dependency at import time
 
-    duck = Path(args.duckdb) if getattr(args, "duckdb", None) else None
+    duck = _duckdb_path_from_args(args, allow_default=True)
     return _gui.run(warehouse=duck)
 
 
@@ -549,23 +552,39 @@ def cmd_workers(args: argparse.Namespace) -> int:
     out_csv = Path(args.out)
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_csv, index=False, encoding="utf-8-sig")
-    duckdb_path = getattr(args, "duckdb", None) or os.getenv("DUCKDB_DB_PATH")
+    duckdb_path = _duckdb_path_from_args(args)
     if duckdb_path:
-        to_duckdb(df, Path(duckdb_path), table="workers")
+        to_duckdb(df, duckdb_path, table="workers")
     print(f"Fetched workers: {len(df)} rows. Wrote {out_csv}")
     if duckdb_path:
         print(f"DuckDB: {duckdb_path} (table 'workers')")
     return 0
 
 
+def _duckdb_path_from_args(args: argparse.Namespace, *, allow_default: bool = False) -> Optional[Path]:
+    value = getattr(args, "duckdb", None)
+    if value:
+        return Path(value).expanduser()
+    env = os.getenv("DUCKDB_DB_PATH")
+    if env:
+        return Path(env).expanduser()
+    if allow_default:
+        return resolve_duckdb_path(None)
+    return None
+
+
 def _duckdb_con_from_args(args: argparse.Namespace):
     import duckdb  # type: ignore
 
-    dbp = getattr(args, "duckdb", None) or os.getenv("DUCKDB_DB_PATH")
-    if not dbp:
-        print("DuckDB path not provided (use --duckdb or set DUCKDB_DB_PATH)", file=sys.stderr)
+    db_path = _duckdb_path_from_args(args, allow_default=True)
+    if db_path is None:
+        print("DuckDB path not provided (use --duckdb, set DUCKDB_DB_PATH, or bundle warehouse/local.duckdb)", file=sys.stderr)
         raise SystemExit(2)
-    return duckdb.connect(str(dbp))
+    try:
+        return duckdb.connect(str(db_path))
+    except Exception as exc:
+        print(f"Failed to open DuckDB at {db_path}: {exc}", file=sys.stderr)
+        raise SystemExit(2)
 
 
 def cmd_review_persons(args: argparse.Namespace) -> int:
@@ -625,7 +644,7 @@ def cmd_review_show(args: argparse.Namespace) -> int:
             return 0
         print(df.to_string(index=False))
         if getattr(args, "with_decisions", False):
-            store = ReviewStore(Path("warehouse/review.sqlite"))
+            store = ReviewStore(resolve_review_db_path(getattr(args, "review_db", None)))
             decs = store.get(name_key(name))
             if decs:
                 print("\n[decisions]")
@@ -637,7 +656,7 @@ def cmd_review_show(args: argparse.Namespace) -> int:
 
 
 def cmd_review_mark(args: argparse.Namespace) -> int:
-    store = ReviewStore(Path(args.review_db))
+    store = ReviewStore(resolve_review_db_path(getattr(args, "review_db", None)))
     store.set(
         name_key(args.name),
         getattr(args, "license_no", None),
@@ -658,7 +677,7 @@ def cmd_review_export(args: argparse.Namespace) -> int:
         ).df()
     finally:
         con.close()
-    store = ReviewStore(Path(args.review_db))
+    store = ReviewStore(resolve_review_db_path(getattr(args, "review_db", None)))
     decs = list(store.all())
     if decs:
         ddf = pd.DataFrame(
@@ -942,9 +961,9 @@ def cmd_due(args: argparse.Namespace) -> int:
     out_csv = Path(args.out)
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     due.to_csv(out_csv, index=False, encoding="utf-8-sig")
-    duckdb_path = getattr(args, "duckdb", None) or os.getenv("DUCKDB_DB_PATH")
+    duckdb_path = _duckdb_path_from_args(args)
     if duckdb_path:
-        to_duckdb(due, Path(duckdb_path), table="due")
+        due = write_due_tables(duckdb_path, due)
     print(f"Wrote due list CSV: {out_csv} ({len(due)} rows)")
 
     if args.ics:
@@ -1136,7 +1155,7 @@ def build_parser() -> argparse.ArgumentParser:
     pa = sub.add_parser("app", help="Run review web app (per-person licenses)")
     pa.add_argument("--host", default="127.0.0.1")
     pa.add_argument("--port", type=int, default=8765)
-    pa.add_argument("--duckdb", help="Path to DuckDB warehouse (default: env DUCKDB_DB_PATH)")
+    pa.add_argument("--duckdb", help="Path to DuckDB warehouse (default: env DUCKDB_DB_PATH or bundled warehouse/local.duckdb)")
     pa.add_argument(
         "--review-db", help="Path to review decisions SQLite (default: warehouse/review.sqlite)"
     )
@@ -1144,7 +1163,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Enrich: join roster with workers to add birth_date/birth_year
     pe = sub.add_parser("enrich", help="Enrich roster with workers info (e.g., birth_date)")
-    pe.add_argument("--duckdb", help="DuckDB path (default: env DUCKDB_DB_PATH)")
+    pe.add_argument("--duckdb", help="DuckDB path (default: env DUCKDB_DB_PATH or bundled warehouse/local.duckdb)")
     pe.add_argument(
         "--workers-csv",
         dest="workers_csv",
@@ -1252,7 +1271,7 @@ def build_parser() -> argparse.ArgumentParser:
     prv_sub = prv.add_subparsers(dest="review_cmd", required=True)
 
     pvp = prv_sub.add_parser("persons", help="List persons with counts from DuckDB roster")
-    pvp.add_argument("--duckdb", help="Path to DuckDB DB (default: env DUCKDB_DB_PATH)")
+    pvp.add_argument("--duckdb", help="Path to DuckDB DB (default: env DUCKDB_DB_PATH or bundled warehouse/local.duckdb)")
     pvp.add_argument("--q", help="Substring filter for name")
     pvp.add_argument(
         "--active", action="store_true", help="Limit to names present in workers table"
@@ -1261,7 +1280,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pvs = prv_sub.add_parser("show", help="Show licenses for one person")
     pvs.add_argument("name", help="Exact name to show")
-    pvs.add_argument("--duckdb", help="Path to DuckDB DB (default: env DUCKDB_DB_PATH)")
+    pvs.add_argument("--duckdb", help="Path to DuckDB DB (default: env DUCKDB_DB_PATH or bundled warehouse/local.duckdb)")
     pvs.add_argument("--with-decisions", action="store_true", help="Include recorded decisions")
     pvs.set_defaults(func=cmd_review_show)
 
@@ -1270,12 +1289,12 @@ def build_parser() -> argparse.ArgumentParser:
     pvm.add_argument("--license-no", help="License number (optional)")
     pvm.add_argument("--status", choices=["ok", "needs_update"], required=True)
     pvm.add_argument("--notes", help="Optional notes")
-    pvm.add_argument("--review-db", default="warehouse/review.sqlite")
+    pvm.add_argument("--review-db", help="Path to review decisions SQLite (default: bundled warehouse/review.sqlite)")
     pvm.set_defaults(func=cmd_review_mark)
 
     pve = prv_sub.add_parser("export", help="Export roster with decisions merged")
-    pve.add_argument("--duckdb", help="Path to DuckDB DB (default: env DUCKDB_DB_PATH)")
-    pve.add_argument("--review-db", default="warehouse/review.sqlite")
+    pve.add_argument("--duckdb", help="Path to DuckDB DB (default: env DUCKDB_DB_PATH or bundled warehouse/local.duckdb)")
+    pve.add_argument("--review-db", help="Path to review decisions SQLite (default: bundled warehouse/review.sqlite)")
     pve.add_argument("--out", default="out/review_export.csv")
     pve.set_defaults(func=cmd_review_export)
 
@@ -1340,7 +1359,7 @@ def build_parser() -> argparse.ArgumentParser:
     # local GUI
     pg = sub.add_parser("gui", help="Launch local GUI (Tkinter)")
     pg.add_argument(
-        "--duckdb", help="Path to DuckDB DB (default: env DUCKDB_DB_PATH or warehouse/local.duckdb)"
+        "--duckdb", help="Path to DuckDB DB (default: env DUCKDB_DB_PATH or bundled warehouse/local.duckdb)"
     )
     pg.set_defaults(func=cmd_gui)
 
