@@ -48,5 +48,6 @@ PyInstaller を使って Python 本体ごと持ち運べる ZIP を作成でき�
 3. 依存をインストールします (`pip install -e .[dev]`)。
 4. `powershell -ExecutionPolicy Bypass -File .\scripts\build_portable_zip.ps1` を実行します (既定で .venv の Python を使用)。
 5. `dist\welding-portable.zip` が生成されます。展開すると `welding-gui\welding-gui.exe` (GUI) と `welding-cli\welding-cli.exe` (CLI) が利用できます。
+6. `warehouse/local.duckdb` が同梱されるため、既存の DuckDB を差し替える場合はこのファイルを入れ替えてください。
 
 ※ Tesseract OCR 本体は同梱されません。必要に応じて別途インストールし、`TESSERACT_CMD` を設定してください。

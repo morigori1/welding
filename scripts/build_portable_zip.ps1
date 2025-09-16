@@ -50,22 +50,18 @@ function Invoke-Step {
 
 function Invoke-Py {
     param(
-        [string[]]$Args,
+        [string[]]$PyArgs,
         [string]$Context = ""
     )
     $allArgs = @()
-    $allArgs += $baseArgs
-    if ($Args) { $allArgs += $Args }
-    $psi = @{
-        FilePath = $pythonExe
-        ArgumentList = $allArgs
-        Wait = $true
-        NoNewWindow = $true
-        PassThru = $true
+    if ($baseArgs -and $baseArgs.Count -gt 0) { $allArgs += $baseArgs }
+    if ($PyArgs -and $PyArgs.Count -gt 0) { $allArgs += $PyArgs }
+    if ($allArgs.Count -eq 0) {
+        throw "Python command failed ($Context) because no arguments were provided"
     }
-    $proc = Start-Process @psi
-    if ($proc.ExitCode -ne 0) {
-        throw "Python command failed ($Context) with exit code $($proc.ExitCode)"
+    & $pythonExe @allArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python command failed ($Context) with exit code $LASTEXITCODE"
     }
 }
 
@@ -80,28 +76,71 @@ if (Test-Path $DistRoot) {
 New-Item -ItemType Directory -Path $DistRoot | Out-Null
 
 Invoke-Step -Message 'Installing/updating PyInstaller' -Action {
-    Invoke-Py -Args @('-m', 'pip', 'install', '-U', 'pyinstaller') -Context 'pip install pyinstaller'
+    Invoke-Py -PyArgs @('-m', 'pip', 'install', '-U', 'pyinstaller') -Context 'pip install pyinstaller'
 }
 
-$commonArgs = @(
+New-Item -ItemType Directory -Path $buildDir | Out-Null
+
+$absDist = (Resolve-Path $DistRoot).Path
+$absBuild = (Resolve-Path $buildDir).Path
+$docsPath = (Resolve-Path (Join-Path $root 'docs')).Path
+$tmplPath = (Resolve-Path (Join-Path $root 'src/welding_registry/templates')).Path
+$cliScriptPath = (Resolve-Path (Join-Path $root 'src/welding_registry/__main__.py')).Path
+$guiScriptPath = (Resolve-Path (Join-Path $root 'scripts/gui_launcher.py')).Path
+
+Invoke-Step -Message 'Building welding-cli.exe' -Action {
+    $code = @"
+import PyInstaller.__main__
+PyInstaller.__main__.run([
     '--noconfirm',
     '--clean',
     '--collect-submodules', 'welding_registry',
-    '--distpath', $DistRoot,
-    '--workpath', $buildDir,
-    '--specpath', $buildDir,
-    '--add-data', (Resolve-Path (Join-Path $root 'docs')).Path + [IO.Path]::PathSeparator + 'docs',
-    '--add-data', (Resolve-Path (Join-Path $root 'src/welding_registry/templates')).Path + [IO.Path]::PathSeparator + 'welding_registry/templates'
-)
-
-Invoke-Step -Message 'Building welding-cli.exe' -Action {
-    $cliArgs = @('-m', 'PyInstaller') + $commonArgs + @('--name', 'welding-cli', '--console', 'src/welding_registry/__main__.py')
-    Invoke-Py -Args $cliArgs -Context 'pyinstaller welding-cli'
+    '--distpath', r'$absDist',
+    '--workpath', r'$absBuild',
+    '--specpath', r'$absBuild',
+    '--add-data', r'$docsPath;docs',
+    '--add-data', r'$tmplPath;welding_registry/templates',
+    '--name', 'welding-cli',
+    '--console', r'$cliScriptPath',
+])
+"@
+    Invoke-Py -PyArgs @('-c', $code) -Context 'pyinstaller welding-cli'
 }
 
 Invoke-Step -Message 'Building welding-gui.exe' -Action {
-    $guiArgs = @('-m', 'PyInstaller') + $commonArgs + @('--name', 'welding-gui', '--windowed', 'scripts/gui_launcher.py')
-    Invoke-Py -Args $guiArgs -Context 'pyinstaller welding-gui'
+    $code = @"
+import PyInstaller.__main__
+PyInstaller.__main__.run([
+    '--noconfirm',
+    '--clean',
+    '--collect-submodules', 'welding_registry',
+    '--distpath', r'$absDist',
+    '--workpath', r'$absBuild',
+    '--specpath', r'$absBuild',
+    '--add-data', r'$docsPath;docs',
+    '--add-data', r'$tmplPath;welding_registry/templates',
+    '--name', 'welding-gui',
+    '--windowed',
+    r'$guiScriptPath',
+])
+"@
+    Invoke-Py -PyArgs @('-c', $code) -Context 'pyinstaller welding-gui'
+}
+
+$warehouseDir = Join-Path $DistRoot 'warehouse'
+$warehouseFile = Join-Path $warehouseDir 'local.duckdb'
+if (Test-Path $warehouseDir) {
+    Remove-Item -Recurse -Force $warehouseDir
+}
+New-Item -ItemType Directory -Path $warehouseDir | Out-Null
+
+$sourceDir = Join-Path $root 'warehouse'
+$sourceDb = Join-Path $sourceDir 'local.duckdb'
+if (Test-Path $sourceDb) {
+    Copy-Item -Path $sourceDb -Destination $warehouseFile -Force
+}
+else {
+    Invoke-Py -PyArgs @('-c', "import duckdb, pathlib; p = pathlib.Path(r'${warehouseFile}'); p.parent.mkdir(parents=True, exist_ok=True); duckdb.connect(str(p)).close()") -Context 'init duckdb file'
 }
 
 $readmePath = Join-Path $DistRoot 'README_portable.txt'
@@ -118,7 +157,7 @@ $readmeLines = @(
     '-----',
     '1. Extract the ZIP somewhere without Japanese characters in the path if possible.',
     '2. Double-click `welding-gui.exe` for the GUI, or run `welding-cli.exe` from PowerShell/Command Prompt.',
-    '3. DuckDB data lives alongside the executable by default (`warehouse/local.duckdb`).',
+    '3. DuckDB database is bundled at `warehouse/local.duckdb` (replace this file if needed).',
     '',
     'Notes',
     '-----',
