@@ -53,7 +53,9 @@ function Invoke-Py {
         [string[]]$Args,
         [string]$Context = ""
     )
-    $allArgs = $baseArgs + ($Args ?? @())
+    $allArgs = @()
+    $allArgs += $baseArgs
+    if ($Args) { $allArgs += $Args }
     $psi = @{
         FilePath = $pythonExe
         ArgumentList = $allArgs
@@ -88,8 +90,8 @@ $commonArgs = @(
     '--distpath', $DistRoot,
     '--workpath', $buildDir,
     '--specpath', $buildDir,
-    '--add-data', 'docs' + [IO.Path]::PathSeparator + 'docs',
-    '--add-data', 'src/welding_registry/templates' + [IO.Path]::PathSeparator + 'welding_registry/templates'
+    '--add-data', (Resolve-Path (Join-Path $root 'docs')).Path + [IO.Path]::PathSeparator + 'docs',
+    '--add-data', (Resolve-Path (Join-Path $root 'src/welding_registry/templates')).Path + [IO.Path]::PathSeparator + 'welding_registry/templates'
 )
 
 Invoke-Step -Message 'Building welding-cli.exe' -Action {

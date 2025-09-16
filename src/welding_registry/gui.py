@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import errno
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -274,8 +275,32 @@ class LocalApp(ttk.Frame):
             messagebox.showinfo(
                 "完了", "ロスターを取り込みました。『レポート』タブで集計してください。"
             )
+        except PermissionError as e:
+            target = getattr(e, 'filename', None) or getattr(e, 'filename2', None)
+            if not target:
+                target = str(duck if 'duck' in locals() else Path.cwd())
+            message = (
+                '出力先に書き込めないため処理を中断しました。\n'
+                f'対象パス: {target}\n'
+                'ZIP を展開したフォルダや書き込み可能な場所で実行するか、DuckDB/出力先パスを変更してください。'
+            )
+            messagebox.showerror('取込エラー', message)
+            self._log(f"[ERROR] {message}")
+            return
+        except OSError as e:
+            if getattr(e, 'errno', None) in (errno.EACCES, errno.EPERM):
+                target = getattr(e, 'filename', None) or getattr(e, 'filename2', None) or str(Path.cwd())
+                message = (
+                    'ファイルにアクセスできないため処理を中断しました。\n'
+                    f'対象パス: {target}\n'
+                    '権限を確認するか、別のフォルダに保存してください。'
+                )
+                messagebox.showerror('取込エラー', message)
+                self._log(f"[ERROR] {message}")
+                return
+            raise
         except Exception as e:
-            messagebox.showerror("取込エラー", str(e))
+            messagebox.showerror('取込エラー', str(e))
             self._log(f"[ERROR] {e}")
 
     def _run_due(self) -> None:
