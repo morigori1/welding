@@ -84,6 +84,18 @@ class LocalApp(ttk.Frame):
 
         self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
+    @staticmethod
+    def _disp(value: Any) -> str:
+        if value is None:
+            return ""
+        try:
+            import pandas as _pd
+            if _pd.isna(value):
+                return ""
+        except Exception:
+            pass
+        return str(value)
+
     def _build_register_tab(self, root: ttk.Frame) -> None:
         # DuckDB path
         frm_db = ttk.Labelframe(root, text="データベース (DuckDB)")
@@ -305,7 +317,8 @@ class LocalApp(ttk.Frame):
         for person_key, row in df.iterrows():
             include_label = "載せる" if bool(row.get("include", True)) else "外す"
             count = int(row.get("license_count", 0))
-            self.people_tree.insert("", tk.END, iid=str(person_key), values=(row.get("display_name", ""), include_label, count))
+            display = self._disp(row.get("display_name")) or str(person_key)
+            self.people_tree.insert("", tk.END, iid=str(person_key), values=(display, include_label, count))
 
     def _filter_people_list(self) -> None:
         if self._people_df is None or self._people_df.empty:
@@ -340,7 +353,7 @@ class LocalApp(ttk.Frame):
         display = ""
         if key in self._people_df.index:
             display = self._people_df.loc[key, "display_name"]
-        self.var_person_label.set(display or key)
+        self.var_person_label.set(self._disp(display) or key)
         self._refresh_license_view(key)
 
     def _toggle_selected_person(self, _event: tk.Event | None = None) -> None:
@@ -414,10 +427,10 @@ class LocalApp(ttk.Frame):
             include_label = "載せる" if bool(row.get("include", True)) else "外す"
             values = (
                 include_label,
-                row.get("qualification", "") or "",
-                row.get("license_no", "") or "",
-                row.get("expiry_date", "") or "",
-                row.get("source", "") or "",
+                self._disp(row.get("qualification")),
+                self._disp(row.get("license_no")),
+                self._disp(row.get("expiry_date")),
+                self._disp(row.get("source")),
             )
             self.license_tree.insert("", tk.END, iid=key, values=values)
 
@@ -483,9 +496,9 @@ class LocalApp(ttk.Frame):
             self.manual_history_tree.insert(
                 "", tk.END, values=(
                     created_str,
-                    row.get("qualification", "") or "",
-                    row.get("license_no", "") or "",
-                    row.get("expiry_date", "") or "",
+                    self._disp(row.get("qualification")),
+                    self._disp(row.get("license_no")),
+                    self._disp(row.get("expiry_date")),
                 )
             )
 
