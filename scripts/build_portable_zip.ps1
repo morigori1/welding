@@ -16,12 +16,12 @@ function Resolve-Python {
         throw "Python executable not found: $Specified"
     }
 
-    $root = Get-Location
+    $root = (Get-Location).Path
     $candidates = @(
-        Join-Path $root ".venv\\Scripts\\python.exe",
-        Join-Path $root ".venv\\Scripts\\python.bat",
-        Join-Path $root "venv\\Scripts\\python.exe",
-        Join-Path $root "venv\\Scripts\\python.bat"
+        (Join-Path -Path $root -ChildPath ".venv\\Scripts\\python.exe"),
+        (Join-Path -Path $root -ChildPath ".venv\\Scripts\\python.bat"),
+        (Join-Path -Path $root -ChildPath "venv\\Scripts\\python.exe"),
+        (Join-Path -Path $root -ChildPath "venv\\Scripts\\python.bat")
     )
     foreach ($candidate in $candidates) {
         if (Test-Path $candidate) {
@@ -95,6 +95,7 @@ PyInstaller.__main__.run([
     '--noconfirm',
     '--clean',
     '--collect-submodules', 'welding_registry',
+    '--collect-data', 'welding_registry.webapp',
     '--distpath', r'$absDist',
     '--workpath', r'$absBuild',
     '--specpath', r'$absBuild',
@@ -114,6 +115,7 @@ PyInstaller.__main__.run([
     '--noconfirm',
     '--clean',
     '--collect-submodules', 'welding_registry',
+    '--collect-data', 'welding_registry.webapp',
     '--distpath', r'$absDist',
     '--workpath', r'$absBuild',
     '--specpath', r'$absBuild',
@@ -175,6 +177,7 @@ if (Test-Path $ZipPath) {
 $items = Get-ChildItem -Path $DistRoot
 Compress-Archive -Path $items.FullName -DestinationPath $ZipPath -Force
 Write-Host 'Portable ZIP created:' (Resolve-Path $ZipPath)
+
 
 
 
