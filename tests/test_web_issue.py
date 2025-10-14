@@ -1,5 +1,7 @@
+import json
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 import pytest
 
@@ -64,6 +66,19 @@ def _make_client(db_path: Path):
     return app.test_client()
 
 
+def _extract_archive_payload(html: str) -> dict:
+    marker = "const archiveBasePayload = "
+    idx = html.find(marker)
+    if idx == -1:
+        raise AssertionError("archive payload marker not found in HTML")
+    start = idx + len(marker)
+    end = html.find(";", start)
+    if end == -1:
+        raise AssertionError("archive payload terminator not found")
+    snippet = html[start:end].strip()
+    return json.loads(snippet)
+
+
 def test_issue_index_preview_renders(sample_duckdb: Path):
     client = _make_client(sample_duckdb)
     resp = client.get("/issue/")
@@ -114,3 +129,28 @@ def test_issue_print_empty(empty_duckdb: Path):
     assert resp.status_code == 200
     html = resp.data.decode("utf-8")
     assert "印刷対象がありません" in html
+
+
+def test_issue_archive_endpoint_records(sample_duckdb: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    warehouse_root = tmp_path / "warehouse"
+    monkeypatch.setenv("WELDING_WAREHOUSE_ROOT", str(warehouse_root))
+    client = _make_client(sample_duckdb)
+    resp = client.get("/issue/print", query_string={"sheet": "A"})
+    assert resp.status_code == 200
+    html = resp.data.decode("utf-8")
+    payload = _extract_archive_payload(html)
+    payload["printed_at"] = "2025-10-14T09:15:00Z"
+    archive_resp = client.post("/issue/archive", json=payload)
+    assert archive_resp.status_code == 201
+    body = archive_resp.get_json()
+    assert body["status"] == "ok"
+    assert body["print_id"] == 1
+
+    csv_files = list((warehouse_root / "issue_prints").glob("*.csv"))
+    json_files = list((warehouse_root / "issue_prints").glob("*.json"))
+    assert len(csv_files) == 1
+    assert len(json_files) == 1
+
+    with duckdb.connect(str(sample_duckdb)) as con:
+        rows = con.execute("SELECT sheet_label, record_count FROM issue_print_runs").fetchall()
+    assert rows == [("A", 1)]

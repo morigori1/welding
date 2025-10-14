@@ -336,7 +336,8 @@ def test_manual_add_preserves_ingest_dates(tmp_path: Path) -> None:
 
     roster = list_qualifications(db_path)
     row = roster.loc[roster["license_no"] == "UE2300957"].iloc[0]
-    assert row["source"] == "manual"
+    assert row["source"] == "ingest"
+    assert row["sheet_source"] == "manual"
     assert row["registration_date"] == "2024-01-01"
     assert row["expiry_date"] == "2026-12-31"
 

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
 import pandas as pd
-from flask import Blueprint, current_app, render_template, request, url_for
+from flask import Blueprint, current_app, jsonify, render_template, request, url_for
 
 from ..issue import (
     COLUMN_LABELS,
@@ -19,6 +21,7 @@ from ..warehouse import (
     DEFAULT_SHEET,
     list_report_definitions,
 )
+from ..print_archive import archive_print_run
 
 SHEET_ALL_TOKEN = "__ALL__"
 SHEET_ALL_LABEL = "全て"
@@ -75,6 +78,29 @@ def _filter_by_sheet(df: pd.DataFrame, sheet: str) -> pd.DataFrame:
     return df.loc[mask].copy()
 
 
+def _serialize_pages(pages: List[Any], columns: List[str]) -> List[Dict[str, Any]]:
+    serialized: List[Dict[str, Any]] = []
+    for page in pages:
+        rows = []
+        for row in getattr(page, "rows", []):
+            rows.append({col: row.get(col, "") for col in columns})
+        serialized.append(
+            {
+                "sheet": getattr(page, "sheet", ""),
+                "sheet_page": getattr(page, "sheet_page", 1),
+                "sheet_total": getattr(page, "sheet_total", 1),
+                "rows": rows,
+            }
+        )
+    return serialized
+
+
+def _content_digest(columns: List[str], pages: List[Dict[str, Any]]) -> str:
+    bundle = {"columns": columns, "pages": pages}
+    blob = json.dumps(bundle, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
+
+
 def _build_issue_context(*, max_pages: int | None = None) -> Dict[str, Any]:
     config = current_app.config
     duckdb_path = Path(config["WELDING_DUCKDB_PATH"])
@@ -114,6 +140,10 @@ def _build_issue_context(*, max_pages: int | None = None) -> Dict[str, Any]:
     valid_sheet_values = {opt["value"] for opt in sheet_options}
     if selected_sheet not in valid_sheet_values:
         selected_sheet = SHEET_ALL_TOKEN
+    selected_sheet_label = next(
+        (opt["label"] for opt in sheet_options if opt["value"] == selected_sheet),
+        SHEET_ALL_LABEL if selected_sheet == SHEET_ALL_TOKEN else selected_sheet,
+    )
 
     filtered_df = _filter_by_sheet(df, selected_sheet)
     filtered_count = int(len(filtered_df)) if filtered_df is not None else 0
@@ -192,8 +222,24 @@ def _build_issue_context(*, max_pages: int | None = None) -> Dict[str, Any]:
     preview_limit = max_pages if max_pages is not None else 0
     preview_limited = max_pages is not None and page_total_value > len(pages)
 
+    serialized_pages = _serialize_pages(pages, selected_columns)
+    digest = _content_digest(selected_columns, serialized_pages)
+    archive_payload = {
+        "sheet": selected_sheet,
+        "sheet_label": selected_sheet_label,
+        "columns": selected_columns,
+        "orientation": orientation,
+        "rows_per_page": rows_per_page,
+        "generated_at": generated_at,
+        "page_total": page_total_value,
+        "record_count": filtered_count,
+        "pages": serialized_pages,
+        "content_hash": digest,
+    }
+
     return {
         "pages": pages,
+        "pages_serialized": serialized_pages,
         "available_columns": available_columns,
         "selected_columns": selected_columns,
         "unused_columns": unused_columns,
@@ -201,6 +247,7 @@ def _build_issue_context(*, max_pages: int | None = None) -> Dict[str, Any]:
         "column_widths": COLUMN_WIDTHS,
         "sheet_options": sheet_options,
         "selected_sheet": selected_sheet,
+        "selected_sheet_label": selected_sheet_label,
         "sheet_all_token": SHEET_ALL_TOKEN,
         "rows_per_page": rows_per_page,
         "orientation": orientation,
@@ -216,6 +263,10 @@ def _build_issue_context(*, max_pages: int | None = None) -> Dict[str, Any]:
         "page_total": page_total_value,
         "preview_limit": preview_limit,
         "preview_limited": preview_limited,
+        "archive_payload": archive_payload,
+        "archive_url": url_for("issue.archive_print"),
+        "content_hash": digest,
+        "filtered_df": filtered_df,
     }
 
 
@@ -232,3 +283,73 @@ def print_view() -> Any:
     context.setdefault("title", "資格発行 印刷")
     context["is_print_view"] = True
     return render_template("issue/print.html", **context)
+
+
+@issue_bp.route("/archive", methods=["POST"])
+def archive_print() -> Any:
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Invalid JSON payload"}), 400
+
+    columns = payload.get("columns")
+    if not isinstance(columns, list) or not all(isinstance(col, str) for col in columns):
+        return jsonify({"error": "列情報(columns)が不正です"}), 400
+
+    pages = payload.get("pages", [])
+    if not isinstance(pages, list):
+        return jsonify({"error": "ページ情報(pages)が不正です"}), 400
+
+    rows: List[Dict[str, Any]] = []
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        page_rows = page.get("rows", [])
+        if not isinstance(page_rows, list):
+            continue
+        for row in page_rows:
+            if isinstance(row, dict):
+                rows.append({col: str(row.get(col, "")) for col in columns})
+
+    df = pd.DataFrame(rows, columns=columns)
+    duckdb_path = Path(current_app.config["WELDING_DUCKDB_PATH"])
+    rows_per_page = payload.get("rows_per_page") or current_app.config.get("WELDING_ROWS_PER_PAGE", 40)
+    orientation = payload.get("orientation", "portrait")
+    page_total = payload.get("page_total", len(pages))
+    record_count = payload.get("record_count", len(rows))
+    sheet_value = str(payload.get("sheet") or "")
+    sheet_label = str(payload.get("sheet_label") or sheet_value or SHEET_ALL_LABEL)
+    generated_at = payload.get("generated_at")
+    printed_at = payload.get("printed_at")
+    content_hash = payload.get("content_hash", "")
+
+    try:
+        result = archive_print_run(
+            duckdb_path=duckdb_path,
+            payload=payload,
+            df=df,
+            columns=columns,
+            sheet=sheet_value,
+            sheet_label=sheet_label,
+            orientation=str(orientation),
+            rows_per_page=int(rows_per_page),
+            page_total=int(page_total),
+            record_count=int(record_count),
+            generated_at=str(generated_at) if generated_at else None,
+            printed_at=str(printed_at) if printed_at else None,
+            content_hash=str(content_hash),
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        return jsonify({"error": f"印刷履歴の保存でエラーが発生しました: {exc}"}), 500
+
+    return (
+        jsonify(
+            {
+                "status": "ok",
+                "print_id": result.print_id,
+                "content_hash": result.content_hash,
+                "csv_path": str(result.csv_path),
+                "payload_path": str(result.payload_path),
+            }
+        ),
+        201,
+    )

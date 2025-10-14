@@ -38,9 +38,10 @@ Web App
 - Routes:
   - `/` 人別一覧（名前リンク→個別画面）
   - `/report` 期限レポート（列: 氏名・生年・資格・登録番号・有効期限・残日数・通知）
-  - `/report/print` 印刷ビュー（A4固定幅、`?rows=35&ori=portrait` 等で調整）
-  - `/person?name=...` 個別確認＋レビュー記録（最新/要更新・メモ）
-  - `/input` ロスターへの手入力（`roster_manual` に追記）
+- `/report/print` 印刷ビュー（A4固定幅、`?rows=35&ori=portrait` 等で調整）
+- `/person?name=...` 個別確認＋レビュー記録（最新/要更新・メモ）
+- `/input` ロスターへの手入力（`roster_manual` に追記）
+- 印刷ビューの「PDF保存」はブラウザの印刷ダイアログで PDF 保存を開き、完了後に DuckDB (`issue_print_runs`) と `warehouse/issue_prints/` に出力内容をスナップショットとして記録します。
 
 Legacy Commands
 - 旧コマンド `python -m welding_registry app` は互換目的で残っていますが、新規利用は `python -m welding_registry web` を推奨します。

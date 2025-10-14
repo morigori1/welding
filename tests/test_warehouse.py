@@ -51,13 +51,29 @@ def test_materialize_roster_all_merges_manual(tmp_path) -> None:
         con.execute("CREATE TABLE roster AS SELECT * FROM roster_src")
         con.unregister("roster_src")
         con.execute(
-            "CREATE TABLE roster_manual AS SELECT '田中' AS name, 'A-001' AS license_no, '手動' AS qualification, NULL AS first_issue_date, NULL AS issue_date, '2025-06-01' AS expiry_date, TIMESTAMP '2025-06-01 00:00:00' AS created"
+            """
+            CREATE TABLE roster_manual AS
+            SELECT
+                '田中' AS name,
+                'A-001' AS license_no,
+                '手動' AS qualification,
+                NULL AS first_issue_date,
+                NULL AS issue_date,
+                '2025-06-01' AS expiry_date,
+                'P1' AS print_sheet,
+                'SheetX' AS source_sheet,
+                TIMESTAMP '2025-06-01 00:00:00' AS created
+            """
         )
     df = materialize_roster_all(db_path)
     assert not df.empty
-    assert set(["person_key", "license_key", "source"]).issubset(df.columns)
-    manual_row = df.loc[df["source"] == "manual"].iloc[0]
-    assert manual_row["qualification"] == "手動"
+    assert set(["person_key", "license_key", "source", "sheet_source"]).issubset(df.columns)
+    row = df.loc[df["license_no"] == "A-001"].iloc[0]
+    assert row["source"] == "ingest"
+    assert row["qualification"] == "基本"
+    assert row["print_sheet"] == "P1"
+    assert row["sheet_source"] == "manual"
+    assert row["source_sheet"] == "SheetX"
     with duckdb.connect(str(db_path)) as con:
         pf = con.execute("SELECT person_key, include FROM issue_person_filter").fetchall()
         assert len(pf) == df["person_key"].nunique()
@@ -77,11 +93,50 @@ def test_materialize_roster_all_manual_keeps_registration_date(tmp_path) -> None
         con.register("roster_src", roster)
         con.execute("CREATE TABLE roster AS SELECT * FROM roster_src")
         con.unregister("roster_src")
-        con.execute("CREATE TABLE roster_manual AS SELECT '田中' AS name, 'A-001' AS license_no, '手動' AS qualification, NULL AS first_issue_date, NULL AS issue_date, '2025-06-30' AS expiry_date, 'P1' AS print_sheet, 'Sheet1' AS source_sheet, TIMESTAMP '2025-06-30 00:00:00' AS created")
+        con.execute(
+            """
+            CREATE TABLE roster_manual AS
+            SELECT
+                '田中' AS name,
+                'A-001' AS license_no,
+                '手動' AS qualification,
+                NULL AS first_issue_date,
+                NULL AS issue_date,
+                '2025-06-30' AS expiry_date,
+                'P1' AS print_sheet,
+                'Sheet1' AS source_sheet,
+                TIMESTAMP '2025-06-30 00:00:00' AS created
+            """
+        )
     df = materialize_roster_all(db_path)
-    manual_row = df.loc[df["source"] == "manual"].iloc[0]
-    assert manual_row["registration_date"] == "2024-04-01"
-    assert manual_row["expiry_date"] == "2025-06-30"
+    row = df.loc[df["license_no"] == "A-001"].iloc[0]
+    assert row["registration_date"] == "2024-04-01"
+    assert row["expiry_date"] == "2025-06-30"
+    assert row["print_sheet"] == "P1"
+    assert row["sheet_source"] == "manual"
+
+
+def test_materialize_roster_all_prefers_latest_by_license(tmp_path) -> None:
+    db_path = tmp_path / "latest.duckdb"
+    roster = pd.DataFrame(
+        {
+            "name": ["田中", "田中"],
+            "license_no": ["A-001", "A-001"],
+            "qualification": ["旧資格", "新資格"],
+            "registration_date": ["2023-01-01", "2024-12-01"],
+            "issue_date": ["2023-02-01", "2025-01-15"],
+            "expiry_date": ["2024-02-01", "2026-01-14"],
+        }
+    )
+    with duckdb.connect(str(db_path)) as con:
+        con.register("roster_src", roster)
+        con.execute("CREATE TABLE roster AS SELECT * FROM roster_src")
+        con.unregister("roster_src")
+    df = materialize_roster_all(db_path)
+    row = df.loc[df["license_no"] == "A-001"].iloc[0]
+    assert row["qualification"] == "新資格"
+    assert row["registration_date"] == "2024-12-01"
+    assert row["issue_date"] == "2025-01-15"
 
 
 

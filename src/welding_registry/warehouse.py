@@ -680,23 +680,42 @@ def materialize_roster_all(db_path: Path | str) -> pd.DataFrame:
         combined["print_sheet"] = combined["print_sheet"].map(_normalize_sheet)
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         if "created" in combined.columns:
-            created_series = combined["created"]
+            created_series = pd.to_datetime(combined["created"], errors="coerce")
         else:
             created_series = pd.Series(pd.NaT, index=combined.index)
-        created = pd.to_datetime(created_series, errors="coerce")
-        combined["last_updated"] = created.fillna(now)
-        priority = combined["source"].map({"manual": 0, "ingest": 1}).fillna(5)
-        combined["_priority"] = priority
+        combined["last_updated"] = created_series.fillna(now)
+        combined["_registration_dt"] = pd.to_datetime(
+            combined.get("registration_date"), errors="coerce"
+        )
+        combined["_issue_dt"] = pd.to_datetime(combined.get("issue_date"), errors="coerce")
+        combined["_expiry_dt"] = pd.to_datetime(combined.get("expiry_date"), errors="coerce")
+        combined["_first_issue_dt"] = pd.to_datetime(
+            combined.get("first_issue_date"), errors="coerce"
+        )
+        combined["_effective_dt"] = combined["_registration_dt"]
+        combined["_effective_dt"] = combined["_effective_dt"].fillna(combined["_issue_dt"])
+        combined["_effective_dt"] = combined["_effective_dt"].fillna(combined["_expiry_dt"])
+        combined["_effective_dt"] = combined["_effective_dt"].fillna(combined["_first_issue_dt"])
+        combined["_effective_dt"] = combined["_effective_dt"].fillna(
+            pd.to_datetime(combined["last_updated"], errors="coerce")
+        )
+        combined["_effective_dt"] = combined["_effective_dt"].fillna(now)
+        combined["_source_rank"] = combined["source"].map({"ingest": 0, "manual": 2}).fillna(1)
         memberships = combined[["license_key", "person_key", "print_sheet"]].dropna(
             subset=["license_key"]
         )
         combined = combined.sort_values(
-            by=["license_key", "_priority", "last_updated"],
-            ascending=[True, True, False],
+            by=["license_key", "_source_rank", "_effective_dt", "last_updated"],
+            ascending=[True, True, False, False],
             kind="stable",
         )
         deduped = combined.drop_duplicates(subset=["license_key"], keep="first")
-        deduped = deduped.drop(columns=["_priority"])
+        manual_entries = combined[combined["source"] == "manual"].copy()
+        manual_entries = manual_entries.sort_values(
+            by=["license_key", "_effective_dt", "last_updated"],
+            ascending=[True, False, False],
+            kind="stable",
+        )
         deduped = deduped.reset_index(drop=True)
         def _has_data(value: Any) -> bool:
             if value is None:
@@ -744,6 +763,50 @@ def materialize_roster_all(db_path: Path | str) -> pd.DataFrame:
                 if mask.any():
                     deduped.loc[mask, column] = fallback_values.loc[mask]
 
+        deduped["sheet_source"] = "auto"
+        if not manual_entries.empty:
+            manual_sheet = manual_entries[["license_key", "print_sheet"]].copy()
+            if "print_sheet" in manual_sheet.columns:
+                manual_sheet["print_sheet"] = manual_sheet["print_sheet"].astype("string")
+                manual_sheet = manual_sheet[manual_sheet["print_sheet"].str.strip() != ""]
+                if not manual_sheet.empty:
+                    sheet_map = (
+                        manual_sheet.drop_duplicates(subset=["license_key"], keep="first")
+                        .set_index("license_key")["print_sheet"]
+                    )
+                    if not sheet_map.empty:
+                        mask = deduped["license_key"].isin(sheet_map.index)
+                        deduped.loc[mask, "print_sheet"] = deduped.loc[mask, "license_key"].map(sheet_map)
+                        deduped.loc[mask, "sheet_source"] = "manual"
+            if "source_sheet" in deduped.columns and "source_sheet" in manual_entries.columns:
+                manual_source_sheet = manual_entries[["license_key", "source_sheet"]].copy()
+                manual_source_sheet["source_sheet"] = manual_source_sheet["source_sheet"].astype(
+                    "string"
+                )
+                manual_source_sheet = manual_source_sheet[
+                    manual_source_sheet["source_sheet"].str.strip() != ""
+                ]
+                if not manual_source_sheet.empty:
+                    source_map = (
+                        manual_source_sheet.drop_duplicates(subset=["license_key"], keep="first")
+                        .set_index("license_key")["source_sheet"]
+                    )
+                    if not source_map.empty:
+                        mask = deduped["license_key"].isin(source_map.index)
+                        deduped.loc[mask, "source_sheet"] = deduped.loc[mask, "license_key"].map(
+                            source_map
+                        )
+
+        helper_cols = [
+            "_source_rank",
+            "_effective_dt",
+            "_registration_dt",
+            "_issue_dt",
+            "_expiry_dt",
+            "_first_issue_dt",
+        ]
+        deduped = deduped.drop(columns=[col for col in helper_cols if col in deduped.columns])
+
         text_columns = [
             "license_no",
             "name",
@@ -757,6 +820,7 @@ def materialize_roster_all(db_path: Path | str) -> pd.DataFrame:
             "birth_year_west",
             "print_sheet",
             "source_sheet",
+            "sheet_source",
         ]
         for col in text_columns:
             if col in deduped.columns:

@@ -378,7 +378,8 @@ def _serialize_row(raw: Dict[str, Any]) -> Dict[str, Any]:
         result[key] = str(value)
     if "report_ids" not in result:
         result["report_ids"] = []
-    result["is_manual"] = result.get("source") == "manual"
+    sheet_override = result.get("sheet_source") == "manual"
+    result["is_manual"] = sheet_override or (result.get("source") == "manual")
     return result
 
 

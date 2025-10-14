@@ -13,6 +13,7 @@
       .toolbar a { color:#0366d6; text-decoration:none; }
       .toolbar button { padding:6px 12px; border:1px solid #999; background:#fff; cursor:pointer; }
       .toolbar button:hover { background:#eee; }
+      .toolbar .spacer { flex:1 1 auto; }
       @media print {
         .toolbar { display:none; }
         body { background:#fff; margin:0; }
@@ -28,18 +29,89 @@
       .issue-table { border-collapse:collapse; width:100%; font-size:12px; }
       .issue-table th, .issue-table td { border:1px solid #999; padding:4px 6px; }
       .issue-table th { background:#f2f2f2; }
+      .archive-status { margin:12px 16px; padding:8px 12px; border-radius:4px; font-size:13px; display:none; }
+      .archive-status[data-status="success"] { border:1px solid #2b8a3e; background:#e6f4ea; color:#1b5e20; }
+      .archive-status[data-status="error"] { border:1px solid #c92a2a; background:#fdecef; color:#842029; }
     </style>
   </head>
   <body>
     <div class="toolbar">
       <a href="{{ preview_url }}">← プレビューに戻る</a>
       <div>行/頁: {{ rows_per_page }} ・ 方向: {{ '縦' if orientation == 'portrait' else '横' }} ・ 更新: {{ generated_at }}</div>
-      <button onclick="window.print()">印刷</button>
+      <div class="spacer"></div>
+      <button type="button" id="pdf-save-button">PDF保存</button>
+      <button type="button" onclick="window.print()">印刷</button>
     </div>
+    <div id="archive-status" class="archive-status"></div>
     {% if pages %}
       {% include "issue/pages.html" %}
     {% else %}
       <p style="margin:24px">印刷対象がありません。</p>
     {% endif %}
+    <script>
+      (function () {
+        const archiveUrl = "{{ archive_url }}";
+        const archiveBasePayload = {{ archive_payload|tojson }};
+        const statusBox = document.getElementById("archive-status");
+        const pdfButton = document.getElementById("pdf-save-button");
+        if (!pdfButton) {
+          return;
+        }
+        let pendingArchive = false;
+
+        function showStatus(kind, message) {
+          if (!statusBox) {
+            return;
+          }
+          statusBox.dataset.status = kind;
+          statusBox.textContent = message;
+          statusBox.style.display = "block";
+        }
+
+        function clonePayload() {
+          return JSON.parse(JSON.stringify(archiveBasePayload));
+        }
+
+        function sendArchive() {
+          const payload = clonePayload();
+          payload.printed_at = new Date().toISOString();
+          fetch(archiveUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+            .then((resp) =>
+              resp.json().then((body) => ({
+                ok: resp.ok,
+                body,
+              }))
+            )
+            .then(({ ok, body }) => {
+              if (ok) {
+                const pid = body.print_id ? ` #${body.print_id}` : "";
+                showStatus("success", `印刷履歴${pid}として保存しました。`);
+              } else {
+                showStatus("error", body && body.error ? body.error : "印刷履歴の保存に失敗しました。");
+              }
+            })
+            .catch(() => {
+              showStatus("error", "印刷履歴の保存に失敗しました。");
+            });
+        }
+
+        pdfButton.addEventListener("click", () => {
+          pendingArchive = true;
+          window.print();
+        });
+
+        window.addEventListener("afterprint", () => {
+          if (!pendingArchive) {
+            return;
+          }
+          pendingArchive = false;
+          sendArchive();
+        });
+      })();
+    </script>
   </body>
 </html>
