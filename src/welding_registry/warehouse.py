@@ -1424,6 +1424,11 @@ def _expand_due_sheets(con, df: pd.DataFrame) -> pd.DataFrame:
     result = pd.concat(expanded_frames, ignore_index=True, sort=False)
     if "print_sheet" in result.columns:
         result["print_sheet"] = result["print_sheet"].astype("string").map(_normalize_sheet)
+    if "print_sheet" in df_copy.columns:
+        result = result.drop_duplicates(
+            subset=["license_key", "print_sheet", "person_key", "license_no", "qualification"],
+            keep="first",
+        ).reset_index(drop=True)
     return result
 
 
