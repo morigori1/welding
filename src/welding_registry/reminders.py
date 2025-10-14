@@ -29,69 +29,104 @@ def _to_date(v) -> Optional[date]:
         return None
 
 
-def compute_due(
+def _project_due(exp: Optional[date], as_of: date, cfg: DueConfig) -> tuple[Optional[int], bool, str, str]:
+    if exp is None:
+        return None, False, "", ""
+
+    days = (exp - as_of).days
+    include = False
+    stage = ""
+    next_date_str = ""
+
+    if days <= cfg.window_days:
+        if days < 0:
+            if cfg.include_overdue:
+                include = True
+                stage = "expired"
+        else:
+            include = True
+            milestones = [
+                ("first", exp - timedelta(days=cfg.first_notice_days)),
+                ("second", exp - timedelta(days=cfg.second_notice_days)),
+                ("final", exp - timedelta(days=cfg.final_notice_days)),
+            ]
+            for label, dt in milestones:
+                if dt >= as_of:
+                    stage = label
+                    next_date_str = dt.isoformat()
+                    break
+            else:
+                if exp >= as_of:
+                    stage = "same-day"
+                    next_date_str = as_of.isoformat()
+    else:
+        if days < 0 and cfg.include_overdue:
+            stage = "expired"
+
+    return days, include, stage, next_date_str
+
+
+def annotate_due(
     df: pd.DataFrame, as_of: date | None = None, cfg: DueConfig | None = None
 ) -> pd.DataFrame:
-    """Return rows with an expiry within window or already overdue, annotated with days_to_expiry
-    and suggested next_notice_date/stage.
-    """
+    """Annotate every row with due metadata without filtering the window."""
     as_of = as_of or date.today()
     cfg = cfg or DueConfig()
 
     if "expiry_date" not in df.columns:
         raise ValueError("DataFrame must contain 'expiry_date'")
 
-    # Work on a copy to avoid mutating caller's frame
-    out = df.copy()
-    out["_expiry_date_obj"] = out["expiry_date"].map(_to_date)
-    out = out[~out["_expiry_date_obj"].isna()].copy()
+    result = df.copy()
+    expiry_series = result["expiry_date"].map(_to_date)
 
-    out["days_to_expiry"] = out["_expiry_date_obj"].map(lambda d: (d - as_of).days)
+    days_list: list[Optional[int]] = []
+    include_flags: list[bool] = []
+    stages: list[str] = []
+    next_dates: list[str] = []
 
-    if cfg.include_overdue:
-        mask = out["days_to_expiry"] <= cfg.window_days
-    else:
-        mask = (out["days_to_expiry"] >= 0) & (out["days_to_expiry"] <= cfg.window_days)
-    out = out[mask].copy()
+    for exp in expiry_series.tolist():
+        days_to_expiry, include, stage, next_date = _project_due(exp, as_of, cfg)
+        days_list.append(days_to_expiry)
+        include_flags.append(include)
+        stages.append(stage)
+        next_dates.append(next_date)
 
-    def _next_notice(exp: date):
-        milestones = [
-            ("first", exp - timedelta(days=cfg.first_notice_days)),
-            ("second", exp - timedelta(days=cfg.second_notice_days)),
-            ("final", exp - timedelta(days=cfg.final_notice_days)),
-        ]
-        # Find the first milestone not yet passed relative to as_of
-        for stage, dt in milestones:
-            if dt >= as_of:
-                return dt, stage
-        # If all have passed but not yet expired, suggest today
-        if exp >= as_of:
-            return as_of, "same-day"
-        return None, "expired"
+    result["days_to_expiry"] = pd.Series(days_list, dtype="Int64")
+    result["notice_stage"] = pd.Series(stages, dtype="string")
+    result["next_notice_date"] = pd.Series(next_dates, dtype="string")
+    result["due_within_window"] = pd.Series(include_flags, dtype="boolean")
+    return result
 
-    next_dates, stages = [], []
-    for exp in out["_expiry_date_obj"].tolist():
-        nd, st = _next_notice(exp)
-        next_dates.append(nd)
-        stages.append(st)
-    out["next_notice_date"] = next_dates
-    out["notice_stage"] = stages
 
-    # Sort by expiry ascending, then name if present
-    by = ["_expiry_date_obj"] + (["name"] if "name" in out.columns else [])
-    out = out.sort_values(by=by, kind="stable")
-    # Present-friendly date strings
-    out["expiry_date"] = out["_expiry_date_obj"].astype("string")
-    out["next_notice_date"] = out["next_notice_date"].astype("string")
-    out = out.drop(columns=["_expiry_date_obj"])  # internal helper
+def compute_due(
+    df: pd.DataFrame, as_of: date | None = None, cfg: DueConfig | None = None
+) -> pd.DataFrame:
+    """Return rows with an expiry within window or already overdue."""
+    annotated = annotate_due(df, as_of=as_of, cfg=cfg)
+    mask = annotated["due_within_window"].fillna(False)
+    out = annotated.loc[mask].copy()
+    out = out.drop(columns=["due_within_window"])
+
+    sort_cols: list[str] = []
+    if "days_to_expiry" in out.columns:
+        sort_cols.append("days_to_expiry")
+    if "name" in out.columns:
+        sort_cols.append("name")
+    if sort_cols:
+        out = out.sort_values(by=sort_cols, kind="stable")
     return out
 
 
 def _ics_escape(text: str) -> str:
-    return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+    return (
+        text.replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\n", "\\n")
+    )
 
 
-def write_ics(df: pd.DataFrame, out_path: Path, summary_tpl: str = "資格有効期限: {name}") -> None:
+def write_ics(df: pd.DataFrame, out_path: Path, summary_tpl: str = "溶接資格: {name}") -> None:
     """Write a minimal ICS calendar with one all-day event per expiry_date.
     summary_tpl can reference columns like {name}, {qualification}.
     """
@@ -109,7 +144,6 @@ def write_ics(df: pd.DataFrame, out_path: Path, summary_tpl: str = "資格有効
         if not exp:
             continue
         ymd = exp.strftime("%Y%m%d")
-        # build summary
         summary = summary_tpl.format(**{k: (str(row[k]) if k in row else "") for k in df.columns})
         summary = _ics_escape(summary)
         uid_src = f"{row.get('name', '')}-{ymd}-{row.get('license_no', '')}".encode(

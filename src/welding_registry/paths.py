@@ -149,7 +149,7 @@ def resolve_review_db_path(explicit: Path | str | None = None) -> Path:
     return review
 
 
-def resolve_log_path(filename: str = "gui.log") -> Path:
+def resolve_log_path(filename: str = "app.log") -> Path:
     log_dir = resolve_warehouse_path() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir / filename

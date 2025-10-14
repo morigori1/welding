@@ -34,7 +34,7 @@ from .xdw import batch_convert, find_dwviewer
 from .db import to_sqlite, to_duckdb, read_sqlserver_table
 from .paths import resolve_duckdb_path, resolve_review_db_path
 from .review import ReviewStore
-from .warehouse import materialize_roster_all, write_due_tables
+from .warehouse import materialize_roster_all, write_due_tables, DEFAULT_SHEET
 
 
 def cmd_enrich(args: argparse.Namespace) -> int:
@@ -148,6 +148,40 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         print(f"File not found: {xls}", file=sys.stderr)
         return 2
 
+    schema_mode = getattr(args, "schema", "auto")
+    if schema_mode not in {"auto", "legacy", "shikaku"}:
+        schema_mode = "auto"
+
+    if schema_mode in {"auto", "shikaku"}:
+        try:
+            from .shikaku_loader import detect_shikaku_workbook, load_shikaku_workbook
+        except ImportError:
+            detect_shikaku_workbook = load_shikaku_workbook = None  # type: ignore
+
+        if load_shikaku_workbook is not None:
+            selected_schema = schema_mode
+            if schema_mode == "auto" and detect_shikaku_workbook(xls):
+                selected_schema = "shikaku"
+            if selected_schema == "shikaku":
+                duck_target = _duckdb_path_from_args(args, allow_default=True)
+                summary = load_shikaku_workbook(
+                    xls,
+                    duckdb_path=duck_target,
+                    out_dir=outdir,
+                )
+                target_msg = f" into {duck_target}" if duck_target else ""
+                print(
+                    f"Loaded {summary.row_count} rows from {summary.source_file.name}{target_msg}"
+                )
+                return 0
+        else:
+            if schema_mode == "shikaku":
+                print(
+                    "shikaku schema requested but shikaku_loader module is unavailable.",
+                    file=sys.stderr,
+                )
+                return 2
+
     # Choose a sheet: user-specified or first one
     if sheet is None:
         sheets = list_sheets(xls)
@@ -159,6 +193,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     header_override = args.header_row if hasattr(args, "header_row") else None
     df_raw, header_row = read_sheet(xls, sheet, header_row_override=header_override)
     df = to_canonical(df_raw)
+    df["source_sheet"] = str(sheet) if sheet is not None else ""
     # Active/Retired by print area (rows)
     if getattr(args, "active_by_print", False) or getattr(args, "only_active_print", False):
         from .io_excel import get_print_areas
@@ -216,6 +251,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         dt = pd.to_datetime(df[src], errors="coerce")
         df["expiry_date"] = (dt + pd.DateOffset(years=int(args.valid_years))).dt.date
     df = normalize(df)
+    if "source_sheet" not in df.columns:
+        df["source_sheet"] = str(sheet) if sheet is not None else ""
+    df["print_sheet"] = DEFAULT_SHEET
 
     outdir.mkdir(parents=True, exist_ok=True)
     # CSV
@@ -319,6 +357,8 @@ def cmd_ingest_vertical(args: argparse.Namespace) -> int:
         df_i = read_vertical_blocks(
             xls_path=xls, sheet=sheet, person_col=person, regno_col=regno, blocks=blks
         )
+        df_i["source_sheet"] = str(sheet)
+        df_i["print_sheet"] = str(sheet)
         # Mark status by print area rows if requested
         if (
             getattr(args, "active_by_print", False) or getattr(args, "only_active_print", False)
@@ -393,10 +433,12 @@ def cmd_ingest_vertical(args: argparse.Namespace) -> int:
         "record_type",
         "row_index",
         "orig_row",
+        "registration_seq",
         "issue_year",
         "first_issue_date",
         "issue_date",
         "expiry_date",
+        "print_sheet",
     ]
     df_roster = df[[c for c in roster_cols if c in df.columns]].copy()
     # Write CSV and XLSX
@@ -489,13 +531,14 @@ def cmd_app(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_gui(args: argparse.Namespace) -> int:
-    # Lazy import to avoid requiring Tk on environments that use only CLI/web
-    from . import gui as _gui  # local import intentional to avoid Tk dependency at import time
+def cmd_web(args: argparse.Namespace) -> int:
+    from .webapp import run as run_web
 
     duck = _duckdb_path_from_args(args, allow_default=True)
-    return _gui.run(warehouse=duck)
-
+    rows = getattr(args, "rows_per_page", None)
+    rows_int = int(rows) if rows is not None else 40
+    run_web(host=args.host, port=int(args.port), warehouse=duck, rows_per_page=rows_int)
+    return 0
 
 def _load_workers_csv(path: Path) -> pd.DataFrame:
     import pandas as _pd
@@ -978,6 +1021,97 @@ def cmd_due(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def cmd_debug_due(args: argparse.Namespace) -> int:
+    duck = resolve_duckdb_path(getattr(args, "duckdb", None))
+    sheet_raw = getattr(args, "sheet", None)
+    sheet = sheet_raw.strip() if isinstance(sheet_raw, str) and sheet_raw.strip() else None
+    limit = getattr(args, "limit", 5)
+    limit = max(int(limit) if isinstance(limit, int) else 5, 0)
+
+    try:
+        import duckdb  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional dependency
+        print(f"Failed to import DuckDB: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        con = duckdb.connect(str(duck))
+    except Exception as exc:
+        print(f"Failed to connect to {duck}: {exc}", file=sys.stderr)
+        return 2
+
+    def table_exists(name: str) -> bool:
+        try:
+            row = con.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_schema='main' AND table_name=?",
+                [name.lower()],
+            ).fetchone()
+            return bool(row)
+        except Exception:
+            return False
+
+    def fetch_rows(query: str, params: list[object] | tuple[object, ...] = ()):  # type: ignore[valid-type]
+        try:
+            return con.execute(query, params).fetchall()
+        except Exception as exc:
+            print(f"  query failed: {exc}")
+            return []
+
+    try:
+        print(f"DuckDB path: {duck}")
+        where_clause = " WHERE print_sheet = ?" if sheet else ""
+        sample_params_sheet = [sheet] if sheet else []
+
+        for table in ("due_raw", "due"):
+            if not table_exists(table):
+                print(f"[{table}] table not found")
+                continue
+            counts = fetch_rows(
+                f"SELECT print_sheet, COUNT(*) FROM {table} GROUP BY print_sheet ORDER BY print_sheet"
+            )
+            print(f"[{table}] counts: {counts}")
+            if limit:
+                sample_params = sample_params_sheet + [limit]
+                sample = fetch_rows(
+                    f"SELECT print_sheet, person_key, name, birth_date, license_no "
+                    f"FROM {table}{where_clause} ORDER BY print_sheet, license_no LIMIT ?",
+                    sample_params,
+                )
+                print(f"[{table}] sample: {sample}")
+
+        if table_exists("issue_person_filter"):
+            people = fetch_rows(
+                "SELECT person_key, include, notes FROM issue_person_filter ORDER BY person_key"
+            )
+            print(f"[issue_person_filter]: {people}")
+        if table_exists("issue_license_filter"):
+            licenses = fetch_rows(
+                "SELECT license_key, include, notes FROM issue_license_filter ORDER BY license_key"
+            )
+            print(f"[issue_license_filter]: {licenses}")
+        if table_exists("issue_sheet_filter"):
+            sheets = fetch_rows(
+                "SELECT print_sheet, include, notes FROM issue_sheet_filter ORDER BY print_sheet"
+            )
+            print(f"[issue_sheet_filter]: {sheets}")
+        if table_exists("issue_sheet_membership"):
+            membership = fetch_rows(
+                "SELECT license_key, person_key, print_sheet, include "
+                "FROM issue_sheet_membership"
+                + (" WHERE print_sheet = ?" if sheet else "")
+                + " ORDER BY print_sheet, license_key LIMIT ?",
+                sample_params_sheet + [limit if limit else 10],
+            )
+            print(f"[issue_sheet_membership]: {membership}")
+    finally:
+        try:
+            con.close()
+        except Exception:
+            pass
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="welding_registry", description="Welding roster utilities")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -993,6 +1127,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--header-row", dest="header_row", type=int, help="Override header row index (0-based)"
     )
     pg.add_argument("--out", default="out", help="Output directory (default: out)")
+    pg.add_argument(
+        "--schema",
+        choices=["auto", "legacy", "shikaku"],
+        default="auto",
+        help="Ingestion schema (default: auto-detect 資格一覧.xlsx)",
+    )
     pg.add_argument("--sqlite", help="Optional path to SQLite DB to write")
     pg.add_argument("--duckdb", help="Optional path to DuckDB file to write")
     pg.add_argument(
@@ -1127,6 +1267,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pdue.set_defaults(func=cmd_due)
 
+    pdebug = sub.add_parser("debug-due", help="Inspect due tables, filters, and sheet assignments")
+    pdebug.add_argument("--duckdb", help="Path to DuckDB database (default: env DUCKDB_DB_PATH or bundled warehouse/local.duckdb)")
+    pdebug.add_argument("--sheet", help="Optional print sheet to filter samples (e.g., P1)")
+    pdebug.add_argument("--limit", type=int, default=5, help="Number of sample rows to show per table (default: 5)")
+    pdebug.set_defaults(func=cmd_debug_due)
+
     px = sub.add_parser("xdw2pdf", help="Batch convert XDW/XBD by printing to a PDF printer")
     px.add_argument("input", help="Input directory containing .xdw/.xbd")
     px.add_argument(
@@ -1159,6 +1305,14 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument(
         "--review-db", help="Path to review decisions SQLite (default: warehouse/review.sqlite)"
     )
+    pweb = sub.add_parser("web", help="Run issuance web UI (Flask)")
+    pweb.add_argument("--host", default="127.0.0.1")
+    pweb.add_argument("--port", type=int, default=8766)
+    pweb.add_argument("--duckdb", help="Path to DuckDB warehouse (default: env DUCKDB_DB_PATH or bundled warehouse/local.duckdb)")
+    pweb.add_argument("--rows-per-page", dest="rows_per_page", type=int, default=40, help="Default rows per printed page")
+    pweb.set_defaults(func=cmd_web)
+
+    # Enrich: join roster with workers to add birth_date/birth_year
     pa.set_defaults(func=cmd_app)
 
     # Enrich: join roster with workers to add birth_date/birth_year
@@ -1356,13 +1510,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     pvdiff.set_defaults(func=_cmd_vdiff)
 
-    # local GUI
-    pg = sub.add_parser("gui", help="Launch local GUI (Tkinter)")
-    pg.add_argument(
-        "--duckdb", help="Path to DuckDB DB (default: env DUCKDB_DB_PATH or bundled warehouse/local.duckdb)"
-    )
-    pg.set_defaults(func=cmd_gui)
-
     return p
 
 
@@ -1432,3 +1579,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

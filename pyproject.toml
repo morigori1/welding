@@ -44,6 +44,10 @@ exclude = [
   "out",
   "warehouse",
   "data",
+  "build",
+  "dist",
+  "dist_*",
+  "dist_prev",
 ]
 
 [tool.ruff.lint]

@@ -30,15 +30,7 @@ Tips
 - `workers` テーブルがあれば `/report` を「在籍者のみ」に絞り込めます。
 - 画面上で「最新/要更新＋メモ」を記録すると、`review.sqlite` の `decisions` に保存されます。
 
-Local App (Tkinter)
--------------------
+Legacy Local App
+----------------
 
-サーバ不要のローカルGUIも提供しています。Web版と同じDuckDBを直接読み書きし、取込→期限レポート→印刷までを一画面で操作できます。
-
-起動:
-
-```
-python -m welding_registry gui --duckdb warehouse/local.duckdb
-```
-
-詳しくは `docs/local_app.md` を参照してください。
+旧来の Tk ベース「ローカル版」は 2025-10 時点で提供を終了しました。ローカル閲覧が必要な場合も `python -m welding_registry web` で Web 版を起動し、ブラウザ経由で利用してください。

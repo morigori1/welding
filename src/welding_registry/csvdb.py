@@ -5,8 +5,9 @@ from typing import Iterable, Optional
 
 import pandas as pd
 
+from .paths import resolve_csv_base
 
-BASE_DIR = Path("warehouse/csv")
+BASE_DIR = resolve_csv_base()
 ASOF_DIR = BASE_DIR / "asof"
 LOG_FILE = BASE_DIR / "display_log.csv"
 

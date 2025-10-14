@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <title>{{ title or '資格発行プレビュー' }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='issue.css') }}">
+    {% block head_extra %}{% endblock %}
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="header-title">資格発行ツール</div>
+      <nav class="header-nav">
+        <a href="{{ url_for('qual.qual_index') }}">資格一覧</a>
+        <a href="{{ url_for('issue.index') }}">発行プレビュー</a>
+        {% if print_url is defined and print_url %}<a href="{{ print_url }}" target="_blank">印刷ビュー</a>{% endif %}
+      </nav>
+    </header>
+    <main class="app-main">
+      {% block content %}{% endblock %}
+    </main>
+    {% block scripts %}
+      <script src="{{ url_for('static', filename='js/issue-columns.js') }}" defer></script>
+    {% endblock %}
+  </body>
+</html>

@@ -34,7 +34,7 @@ Notes:
 - For OCR, set `AZURE_OCR_ENDPOINT` / `AZURE_OCR_KEY` or install Tesseract. Multiple `--licenses-scan` can be provided to combine sources.
 
 Web App
-- Run: `python -m welding_registry app --duckdb warehouse/local.duckdb --review-db warehouse/review.sqlite`
+- Run: `python -m welding_registry web --duckdb warehouse/local.duckdb`
 - Routes:
   - `/` 人別一覧（名前リンク→個別画面）
   - `/report` 期限レポート（列: 氏名・生年・資格・登録番号・有効期限・残日数・通知）
@@ -42,6 +42,6 @@ Web App
   - `/person?name=...` 個別確認＋レビュー記録（最新/要更新・メモ）
   - `/input` ロスターへの手入力（`roster_manual` に追記）
 
-Local GUI
-- Run: `python -m welding_registry gui --duckdb warehouse/local.duckdb`
-- 機能: Excel取込（縦レイアウト対応）、期限レポート作成、CSV/ICS出力、印刷プレビュー（HTML生成）。
+Legacy Commands
+- 旧コマンド `python -m welding_registry app` は互換目的で残っていますが、新規利用は `python -m welding_registry web` を推奨します。
+- Tk ベースの `python -m welding_registry gui` は 2025-10 をもって廃止されました。

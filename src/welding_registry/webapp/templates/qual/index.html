@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+  <style>
+    .qual-controls { margin-bottom: 1.5rem; }
+    .qual-controls h1 { margin: 0 0 0.5rem 0; }
+    .qual-summary { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.95rem; color: #333; }
+    .qual-summary span { background: #f5f5f5; padding: 0.25rem 0.75rem; border-radius: 999px; }
+    .qual-filters { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .qual-filters .filter-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+    .qual-filters .column-selector { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+    .qual-filters .column-selector label { font-size: 0.82rem; display: inline-flex; align-items: center; gap: 0.25rem; }
+    .qual-filters .sort-controls { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.1rem 0; }
+    .qual-filters .sort-tier { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; font-size: 0.82rem; }
+    .qual-filters .sort-tier span { font-weight: 600; }
+    .qual-filters input[type="text"], .qual-filters select { padding: 0.35rem 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
+    .qual-filters .filter-actions { margin-top: 0.5rem; }
+    .qual-filters button { padding: 0.4rem 0.9rem; border: none; background: #314781; color: #fff; border-radius: 4px; cursor: pointer; }
+    .report-definition-manager { margin-top: 1.5rem; }
+    .report-def-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.85rem; }
+    .report-def-table th, .report-def-table td { border: 1px solid #dcdcdc; padding: 0.4rem 0.6rem; text-align: left; }
+    .report-def-table th { background: #f3f4f7; }
+    .report-def-table td.actions { width: 6rem; text-align: center; }
+    .qual-form { margin-top: 1rem; }
+    .qual-form fieldset { border: 1px solid #d6d6d6; border-radius: 6px; padding: 0.75rem; }
+    .qual-form legend { padding: 0 0.25rem; font-weight: 600; }
+    .qual-form label { display: inline-flex; flex-direction: column; font-size: 0.85rem; margin: 0.4rem 0.6rem 0.4rem 0; min-width: 10rem; }
+    .qual-form input { padding: 0.35rem 0.5rem; border: 1px solid #c2c2c2; border-radius: 4px; }
+    .qual-form .form-actions { margin-top: 0.6rem; }
+    .qual-form button { padding: 0.45rem 1.2rem; border: none; background: #146c43; color: #fff; border-radius: 4px; cursor: pointer; }
+    .qual-form button:hover { background: #0f4e31; }
+    .qual-table table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    .qual-table th, .qual-table td { border: 1px solid #dcdcdc; padding: 0.45rem 0.6rem; vertical-align: top; }
+    .qual-table th { background: #f3f4f7; text-align: left; }
+    .qual-table tr:nth-child(even) { background: #fafafa; }
+    .qual-table tr.is-manual { background: #f8f5ff; }
+    .qual-table tr.is-selected { outline: 2px solid #314781; outline-offset: -2px; }
+    .qual-table .muted { color: #6f6f6f; font-size: 0.85rem; }
+    .inline-form { display: inline; margin: 0; }
+    .inline-form button { padding: 0.25rem 0.6rem; border: none; background: #b02a37; color: #fff; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+    .inline-form button:hover { background: #821c27; }
+    .reports-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+    .reports-list li { display: flex; gap: 0.5rem; align-items: center; }
+    .flash-message { margin: 0.5rem 0 0 0; color: #b00020; font-weight: 600; }
+    @media (max-width: 900px) {
+      .qual-form label { min-width: auto; width: 100%; }
+      .qual-table table { font-size: 0.88rem; }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  {% if sheet_field == 'source_sheet' %}
+    {% set sheet_label = '入力元シート' %}
+  {% elif sheet_field == 'print_sheet' %}
+    {% set sheet_label = '印刷シート' %}
+  {% else %}
+    {% set sheet_label = '入力元' %}
+  {% endif %}
+
+  <section class="qual-controls">
+    <h1>資格一覧</h1>
+    {% if error_message %}
+      <div class="flash-message">{{ error_message }}</div>
+    {% endif %}
+    <div class="qual-summary">
+      <span>対象: {{ summary.total }} 件</span>
+      {% if summary.manual is not none %}<span>手動登録: {{ summary.manual }} 件</span>{% endif %}
+      {% if summary.reports %}
+        {% for rid, count in summary.reports.items() %}
+          <span>{{ rid }}: {{ count }} 件</span>
+        {% endfor %}
+      {% endif %}
+    </div>
+        <form class="qual-filters" method="get" action="{{ url_for('qual.qual_index') }}">
+      <div class="filter-row">
+        <input type="text" name="q" value="{{ search }}" placeholder="氏名・免許番号・資格で検索">
+        <select name="sheet">
+          <option value="" {% if not selected_sheet %}selected{% endif %}>全シート</option>
+          {% for opt in sheets %}
+            <option value="{{ opt.value }}" {% if opt.value == selected_sheet %}selected{% endif %}>
+              {{ opt.label }} ({{ opt.count }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="sort-controls">
+        {% for idx in sort_indices %}
+          {% set current_sort = selected_sort_columns[idx] %}
+          {% set current_order = selected_sort_orders[idx] %}
+          <div class="sort-tier">
+            <span>優先{{ idx + 1 }}</span>
+            <select name="sort">
+              <option value="">並び替えなし</option>
+              {% for opt in sort_options %}
+                <option value="{{ opt.value }}" {% if current_sort == opt.value %}selected{% endif %}>{{ opt.label }}</option>
+              {% endfor %}
+            </select>
+            <select name="order">
+              <option value="asc" {% if current_order != 'desc' %}selected{% endif %}>昇順</option>
+              <option value="desc" {% if current_order == 'desc' %}selected{% endif %}>降順</option>
+            </select>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="column-selector">
+        {% for opt in column_options %}
+          <label><input type="checkbox" name="columns" value="{{ opt.value }}" {% if opt.checked %}checked{% endif %}>{{ opt.label }}</label>
+        {% endfor %}
+      </div>
+      <div class="filter-actions">
+        <button type="submit">適用</button>
+      </div>
+    </form>
+
+    <form method="post" action="{{ url_for('qual.qual_import') }}" class="qual-form" enctype="multipart/form-data">
+      <fieldset>
+        <legend>資格一覧取込</legend>
+        <label>Excelファイル<input type="file" name="excel" accept=".xls,.xlsx" required></label>
+        <label>シート名<input name="sheet" placeholder="例: Sheet1"></label>
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <div class="form-actions">
+          <button type="submit">インポート</button>
+        </div>
+      </fieldset>
+    </form>
+
+    <form method="post" action="{{ url_for('qual.manual_add') }}" class="qual-form">
+      <fieldset>
+        <legend>手動登録・更新</legend>
+        <label>氏名<input name="name" required value="{{ form_initial.name }}"></label>
+        <label>免許番号<input name="license_no" required value="{{ form_initial.license_no }}"></label>
+        <label>資格<input name="qualification" value="{{ form_initial.qualification }}"></label>
+        <label>資格種別<input name="category" value="{{ form_initial.category }}"></label>
+        <label>継続状況<input name="continuation_status" value="{{ form_initial.continuation_status }}"></label>
+        <label>登録日<input name="registration_date" type="date" value="{{ form_initial.registration_date }}"></label>
+        <label>初回交付日<input name="first_issue_date" type="date" value="{{ form_initial.first_issue_date }}"></label>
+        <label>交付日<input name="issue_date" type="date" value="{{ form_initial.issue_date }}"></label>
+        <label>有効期限<input name="expiry_date" type="date" value="{{ form_initial.expiry_date }}"></label>
+        <label>次回ステージ<input name="next_stage_label" value="{{ form_initial.next_stage_label }}"></label>
+        <label>{{ column_labels['next_exam_period'] }}<input name="next_exam_period" value="{{ form_initial.next_exam_period }}" placeholder="例: 2025/03/01〜2025/08/31"></label>
+        <label>次回手続<input name="next_procedure_status" value="{{ form_initial.next_procedure_status }}"></label>
+        <label>社員ID<input name="employee_id" value="{{ form_initial.employee_id }}"></label>
+        <label>生年(西暦)<input name="birth_year_west" value="{{ form_initial.birth_year_west }}" placeholder="例: 1985"></label>
+        <label>入力元シート<input name="source_sheet" placeholder="例: Sheet1" value="{{ form_initial.source_sheet }}"></label>
+        <label>印刷シート<input name="print_sheet" placeholder="例: P1" value="{{ form_initial.print_sheet }}"></label>
+        <input type="hidden" name="mode" value="{{ form_initial.mode or 'add' }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <div class="form-actions">
+          <button type="submit">登録／更新</button>
+        </div>
+      </fieldset>
+    </form>
+
+    <form method="post" action="{{ url_for('qual.report_add') }}" class="qual-form">
+      <fieldset>
+        <legend>個別レポート登録</legend>
+        <label>レポートID<input name="report_id" list="report-suggestions" required></label>
+        <label>免許番号<input name="license_no" required value="{{ report_initial.license_no }}"></label>
+        <label>メモ<input name="note" placeholder="任意"></label>
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <div class="form-actions">
+          <button type="submit">登録する</button>
+        </div>
+      </fieldset>
+      <datalist id="report-suggestions">
+        {% for opt in report_options %}
+          <option value="{{ opt.id }}">{{ opt.label }}</option>
+        {% endfor %}
+      </datalist>
+    </form>
+
+    <section class="report-definition-manager">
+      <form method="post" action="{{ url_for('qual.report_definition_add_route') }}" class="qual-form">
+        <fieldset>
+          <legend>レポート定義登録</legend>
+          <label>レポートID<input name="report_id" required placeholder="例: inspection"></label>
+          <label>表示名<input name="label" placeholder="例: 年次監査"></label>
+          <label>説明<input name="description" placeholder="任意"></label>
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <div class="form-actions">
+            <button type="submit">定義を保存</button>
+          </div>
+        </fieldset>
+      </form>
+      {% if report_definitions %}
+        <table class="report-def-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>表示名</th>
+              <th>説明</th>
+              <th>割当数</th>
+              <th class="actions">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for definition in report_definitions %}
+              <tr>
+                <td>{{ definition.id }}</td>
+                <td>{{ definition.label }}</td>
+                <td>{{ definition.description or '-' }}</td>
+                <td>{{ definition.count }}</td>
+                <td class="actions">
+                  <form method="post" action="{{ url_for('qual.report_definition_delete_route', report_id=definition.id) }}" class="inline-form">
+                    <input type="hidden" name="next" value="{{ request.full_path }}">
+                    <button type="submit">削除</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">定義がありません。</p>
+      {% endif %}
+    </section>
+  </section>
+
+  <section class="qual-table">
+    <table>
+      <thead>
+        <tr>
+          {% for col in selected_columns %}
+            <th>{{ column_labels[col] }}</th>
+          {% endfor %}
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if qualifications %}
+          {% for row in qualifications %}
+            <tr class="{% if row.source == 'manual' %}is-manual{% endif %} {% if row.license_no == selected_license %}is-selected{% endif %}">
+              {% for col in selected_columns %}
+                {% set value = row.get(col) %}
+                <td>
+                  {% if col == 'name' %}
+                    <a href="{{ url_for('qual.qual_index', selected=row.license_no, sheet=selected_sheet or None, q=search or None, sort=sort_columns_active, order=sort_orders_active, columns=selected_columns) }}">{{ value or '-' }}</a>
+                  {% elif col == 'report_ids' %}
+                    {% if value %}
+                      <ul class="reports-list">
+                        {% for rid in value %}
+                          <li>
+                            <span>{{ rid }}</span>
+                            <form method="post" action="{{ url_for('qual.report_delete', report_id=rid, license_no=row.license_no) }}" class="inline-form">
+                              <input type="hidden" name="next" value="{{ request.full_path }}">
+                              <button type="submit">削除</button>
+                            </form>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    {% else %}
+                      <span class="muted">未登録</span>
+                    {% endif %}
+                  {% elif col == 'print_sheet' %}
+                    {{ '-' if value in (None, '', 'default') else value }}
+                  {% elif col == 'source_sheet' %}
+                    {{ value or '未指定' }}
+                  {% elif col in date_columns %}
+                    {{ value or '-' }}
+                  {% else %}
+                    {{ value or '-' }}
+                  {% endif %}
+                </td>
+              {% endfor %}
+              <td>
+                <form method="post" action="{{ url_for('qual.manual_delete', license_no=row.license_no) }}" class="inline-form">
+                  <input type="hidden" name="name" value="{{ row.name }}">
+                  <input type="hidden" name="next" value="{{ request.full_path }}">
+                  <button type="submit">削除</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="{{ selected_columns|length + 1 }}" class="muted">該当する資格がありません。</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}
+
+{% block scripts %}{% endblock %}

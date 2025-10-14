@@ -1,0 +1,30 @@
+{% set preview_pages = pages|length %}
+{% set page_total_value = page_total if page_total is defined else preview_pages %}
+<div class="issue-pages">
+  {% for page in pages %}
+    <section class="issue-page">
+      <div class="issue-page-head">
+        <div class="issue-page-title">{{ title }}</div>
+        <div class="issue-page-meta">シート: {{ page.sheet }} / {{ page.sheet_page }} - {{ page.sheet_total }} ｜ {{ loop.index }} / {{ page_total_value }} ｜ {{ generated_at }}</div>
+      </div>
+      <table class="issue-table">
+        <thead>
+          <tr>
+            {% for col in selected_columns %}
+              <th style="width: {{ column_widths.get(col, 120) }}px">{{ column_labels.get(col, col) }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in page.rows %}
+            <tr>
+              {% for col in selected_columns %}
+                <td>{{ row.get(col, '') }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endfor %}
+</div>

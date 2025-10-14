@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Literal
 
 import pandas as pd
+import unicodedata as _ud
 
 from .field_map import get_header_map, DATE_COLUMNS
 
@@ -131,31 +132,37 @@ def to_canonical(df: pd.DataFrame) -> pd.DataFrame:
         norm = _norm(raw)
         key = header_map.get(raw) or header_map.get(norm)
         if not key:
-            # Heuristics for common patterns
-            if re.search(r"氏名|名前", norm):
-                key = "name"
-            elif re.search(r"資格", norm):
-                key = "qualification"
-            elif re.search(r"番号|No\.?", norm, re.IGNORECASE):
-                key = "license_no"
-            elif "試験" in norm:
-                key = "test_date"
-            elif ("取得" in norm and "日" in norm) or ("登録" in norm and "日" in norm):
-                key = "first_issue_date"
-            elif "継続" in norm and "日" in norm:
-                key = "issue_date"
-            elif "交付" in norm and "日" in norm:
-                key = "issue_date"
-            elif "有効" in norm and ("年月日" in norm or "期限" in norm or "満了" in norm):
-                key = "expiry_date"
-            elif ("交付" in norm) or ("発行" in norm):
-                key = "issue_date"
-            elif ("有効" in norm) and ("期限" in norm or "満了" in norm):
-                key = "expiry_date"
-            elif "生年月日" in norm:
-                key = "birth_date"
-            elif "西暦" in norm or "生年" in norm:
-                key = "birth_year_west"
+            lower_norm = norm.lower()
+            if any(token in norm for token in ('氏名', '名前')):
+                key = 'name'
+            elif '資格種別' in norm:
+                key = 'category'
+            elif '資格' in norm and '資格種別' not in norm:
+                key = 'qualification'
+            elif re.fullmatch(r'no\.?', lower_norm):
+                key = 'row_no'
+            elif 'web' in lower_norm and '番号' in norm:
+                key = 'web_control_no'
+            elif ('番号' in norm and any(token in norm for token in ('免許', '資格', '登録', '証'))) or any(token in norm for token in ('免許番号', '資格番号', '登録番号', '証番号', 'ライセンス')):
+                key = 'license_no'
+            elif '試験' in norm:
+                key = 'test_date'
+            elif (('取得' in norm and '日' in norm) or ('登録' in norm and '日' in norm)):
+                key = 'first_issue_date'
+            elif '継続' in norm and '日' in norm:
+                key = 'issue_date'
+            elif '交付' in norm and '日' in norm:
+                key = 'issue_date'
+            elif '有効' in norm and ('年月日' in norm or '期限' in norm or '満了' in norm):
+                key = 'expiry_date'
+            elif ('交付' in norm) or ('発行' in norm):
+                key = 'issue_date'
+            elif ('有効' in norm) and ('期限' in norm or '満了' in norm):
+                key = 'expiry_date'
+            elif '生年月日' in norm:
+                key = 'birth_date'
+            elif '西暦' in norm or '生年' in norm:
+                key = 'birth_year_west'
         mapped_cols[col] = key if key else col
     out = df.rename(columns=mapped_cols)
 
@@ -789,9 +796,43 @@ def read_vertical_blocks(
                 if y is not None:
                     issue_year = y
 
+            regno_clean = ""
+            if isinstance(regno, str):
+                regno_clean = regno.strip()
+            elif regno is not None and not (isinstance(regno, float) and pd.isna(regno)):
+                regno_clean = str(regno).strip()
+
+            def _candidate_license(val: Any) -> str:
+                if val is None:
+                    return ""
+                text = str(val).strip()
+                if not text:
+                    return ""
+                text = _ud.normalize("NFKC", text)
+                if any(sep in text for sep in ("/", "\\", ".", "年", "月", "日")):
+                    return ""
+                digits = sum(ch.isdigit() for ch in text)
+                letters = sum(ch.isalpha() for ch in text)
+                if digits >= 4:
+                    return text
+                if letters >= 2 and digits >= 2 and (letters + digits) >= 4:
+                    return text
+                if digits >= 2 and letters >= 1:
+                    return text
+                return ""
+
+            license_value = _candidate_license(raw_map.get("c1"))
+            if not license_value:
+                for key in ("c2", "c0", "c3"):
+                    candidate = _candidate_license(raw_map.get(key))
+                    if candidate:
+                        license_value = candidate
+                        break
+            license_value = license_value or regno_clean or None
+
             rec = {
                 "name": name,
-                "license_no": regno,
+                "license_no": license_value,
                 "category": category,
                 "row_index": idx_i,
                 "orig_row": orig_row,
@@ -808,6 +849,8 @@ def read_vertical_blocks(
                 "expiry_date": expiry if (expiry is not None and pd.notna(expiry)) else None,
                 "values": raw_map,
             }
+            if regno_clean and license_value and regno_clean != license_value:
+                rec["registration_seq"] = regno_clean
             records.append(rec)
 
     return pd.DataFrame.from_records(records)

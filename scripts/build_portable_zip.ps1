@@ -108,7 +108,7 @@ PyInstaller.__main__.run([
     Invoke-Py -PyArgs @('-c', $code) -Context 'pyinstaller welding-cli'
 }
 
-Invoke-Step -Message 'Building welding-gui.exe' -Action {
+Invoke-Step -Message 'Building welding-web.exe' -Action {
     $code = @"
 import PyInstaller.__main__
 PyInstaller.__main__.run([
@@ -121,12 +121,12 @@ PyInstaller.__main__.run([
     '--specpath', r'$absBuild',
     '--add-data', r'$docsPath;docs',
     '--add-data', r'$tmplPath;welding_registry/templates',
-    '--name', 'welding-gui',
+    '--name', 'welding-web',
     '--windowed',
     r'$guiScriptPath',
 ])
 "@
-    Invoke-Py -PyArgs @('-c', $code) -Context 'pyinstaller welding-gui'
+    Invoke-Py -PyArgs @('-c', $code) -Context 'pyinstaller welding-web'
 }
 
 $warehouseDir = Join-Path $DistRoot 'warehouse'
@@ -153,12 +153,12 @@ $readmeLines = @(
     'Contents',
     '--------',
     '- welding-cli\welding-cli.exe    : command-line interface (`welding-cli.exe --help`).',
-    '- welding-gui\welding-gui.exe    : Tkinter desktop GUI launcher.',
+    '- welding-web\welding-web.exe    : Web application launcher (opens browser).',
     '',
     'Usage',
     '-----',
     '1. Extract the ZIP somewhere without Japanese characters in the path if possible.',
-    '2. Double-click `welding-gui.exe` for the GUI, or run `welding-cli.exe` from PowerShell/Command Prompt.',
+    '2. Double-click `welding-web.exe` to start the local web app, or run `welding-cli.exe` from PowerShell/Command Prompt.',
     '3. DuckDB database is bundled at `warehouse/local.duckdb` (replace this file if needed).',
     '',
     'Notes',

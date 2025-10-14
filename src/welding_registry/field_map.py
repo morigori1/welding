@@ -8,7 +8,7 @@ import unicodedata as _ud
 import yaml
 
 # Canonical date-like columns used across the project
-DATE_COLUMNS = {"birth_date", "test_date", "first_issue_date", "issue_date", "expiry_date"}
+DATE_COLUMNS = {"birth_date", "test_date", "first_issue_date", "issue_date", "expiry_date", "registration_date"}
 
 
 def _norm_token(s: str) -> str:
@@ -48,8 +48,15 @@ def get_header_map() -> Dict[str, str]:
         "name": ["氏名"],
         "kana": ["ﾌﾘｶﾞﾅ", "フリガナ"],
         "birth_date": ["生年月日"],
-        "birth_year_west": ["生年・西暦"],
+        "birth_year_west": ["生年・西暦", "（生年・西暦）", "生年", "生年(西暦)"],
         "license_no": ["登録番号", "免許番号", "資格番号"],
+
+        "category": ["区分", "資格種類"],
+        "registration_date": ["登録年月日", "登録日"],
+        "continuation_status": ["継続"],
+        "next_stage_label": ["次回区分"],
+        "next_exam_period": ["次回サーベイランス/再評価受験期間", "次回受験期間"],
+        "next_procedure_status": ["次回手続き状況"],
         "qualification": ["資格"],
         "process": ["溶接方法"],
         "material": ["材質", "材料"],
@@ -80,7 +87,7 @@ def get_header_map() -> Dict[str, str]:
     for canon, tokens in base.items():
         # Augment synonyms programmatically to avoid YAML encoding pitfalls
         if canon == "license_no":
-            extra = ["証明書番号", "証書番号", "登録番号", "認定番号", "番号", "No", "No."]
+            extra = ["証明書番号", "証書番号", "登録番号", "認定番号", "番号", "No", "No.", "証明番号"]
             tokens = list(_ensure_str_list(tokens)) + extra
         for tok in _ensure_str_list(tokens):
             if not tok:
@@ -91,3 +98,4 @@ def get_header_map() -> Dict[str, str]:
 
 
 __all__ = ["get_header_map", "DATE_COLUMNS"]
+

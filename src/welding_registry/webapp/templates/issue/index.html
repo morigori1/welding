@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="form-panel">
+    <form method="get" class="issue-form">
+      <div class="form-row">
+        <label for="sheet-select">シート</label>
+        <select id="sheet-select" name="sheet">
+          {% for option in sheet_options %}
+            <option value="{{ option.value }}" {% if option.value == selected_sheet %}selected{% endif %}>
+              {{ option.label }} ({{ option.count }}件)
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row columns-row">
+        <div class="columns-selected">
+          <label>表示する列</label>
+          <ul id="selected-columns" class="column-list" aria-label="表示列">
+            {% for col in selected_columns %}
+              <li data-column="{{ col }}">
+                <span>{{ column_labels.get(col, col) }}</span>
+                <input type="hidden" name="columns" value="{{ col }}">
+              </li>
+            {% endfor %}
+          </ul>
+          <div class="column-buttons">
+            <button type="button" class="btn" data-action="up">↑ 上へ</button>
+            <button type="button" class="btn" data-action="down">↓ 下へ</button>
+            <button type="button" class="btn" data-action="remove">← 削除</button>
+          </div>
+        </div>
+        <div class="columns-available">
+          <label for="available-columns">追加可能な列</label>
+          <select id="available-columns" size="10" aria-label="未選択列">
+            {% for col in unused_columns %}
+              <option value="{{ col }}">{{ column_labels.get(col, col) }}</option>
+            {% endfor %}
+          </select>
+          <div class="column-buttons">
+            <button type="button" class="btn" data-action="add">追加 →</button>
+          </div>
+        </div>
+      </div>
+      <div class="form-row settings-row">
+        <label for="rows-per-page">1ページの行数</label>
+        <input id="rows-per-page" type="number" name="rows_per_page" value="{{ rows_per_page }}" min="1" max="200">
+        <label for="orientation">方向</label>
+        <select id="orientation" name="orientation">
+          <option value="portrait" {% if orientation == 'portrait' %}selected{% endif %}>縦</option>
+          <option value="landscape" {% if orientation == 'landscape' %}selected{% endif %}>横</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn primary">プレビュー更新</button>
+        <a href="{{ print_url }}" target="_blank" class="btn secondary">印刷ビューを開く</a>
+      </div>
+    </form>
+  </section>
+
+  {% if regenerated %}
+    <div class="notice info">DuckDB から最新の資格データを再生成しました。</div>
+  {% endif %}
+
+  <section class="preview-panel">
+    <header class="section-head">
+      <h2>プレビュー</h2>
+      <div class="section-meta">件数 {{ filtered_rows }} / 全体 {{ total_rows }} 件 ・ 生成 {{ generated_at }}</div>
+    </header>
+    {% if preview_limited %}
+      <div class="notice info">プレビューは先頭 {{ preview_limit }} ページまでを表示しています。全 {{ page_total }} ページを確認する場合は「印刷プレビューを開く」をご利用ください。</div>
+    {% endif %}
+    {% if pages %}
+      {% include "issue/pages.html" %}
+    {% else %}
+      <div class="empty-state">条件に一致する記録はありません。</div>
+    {% endif %}
+  </section>
+{% endblock %}
