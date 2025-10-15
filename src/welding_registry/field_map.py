@@ -48,14 +48,19 @@ def get_header_map() -> Dict[str, str]:
         "name": ["氏名"],
         "kana": ["ﾌﾘｶﾞﾅ", "フリガナ"],
         "birth_date": ["生年月日"],
-        "birth_year_west": ["生年・西暦", "（生年・西暦）", "生年", "生年(西暦)"],
+        "birth_year_west": ["生年・西暦", "（生年・西暦）", "生年", "生年(西暦)", "生年（西暦）"],
         "license_no": ["登録番号", "免許番号", "資格番号"],
 
         "category": ["区分", "資格種類"],
         "registration_date": ["登録年月日", "登録日"],
         "continuation_status": ["継続"],
         "next_stage_label": ["次回区分"],
-        "next_exam_period": ["次回サーベイランス/再評価受験期間", "次回受験期間"],
+        "next_exam_period": [
+            "次回サーベイランス/再評価受験期間",
+            "次回ｻｰﾍﾞｲﾗﾝｽ/再評価受験期間",
+            "次回／再評価受験期間",
+            "次回受験期間",
+        ],
         "next_procedure_status": ["次回手続き状況"],
         "qualification": ["資格"],
         "process": ["溶接方法"],
@@ -66,6 +71,8 @@ def get_header_map() -> Dict[str, str]:
         "expiry_date": ["有効期限"],
         "result": ["試験結果", "結果"],
         "notes": ["備考"],
+        "address": ["自宅住所", "住所", "住所（自宅）"],
+        "web_publish_no": ["WEB申込番号", "WEB公開番号", "WEB申込No.", "WEB申込No"],
     }
 
     try:
