@@ -49,6 +49,7 @@ QUAL_COLUMN_LABELS = {
     "first_issue_date": "初回交付",
     "issue_date": "交付日",
     "expiry_date": "有効期限",
+    "birth_date": "生年月日",
     "source_sheet": "入力元シート",
     "print_sheet": "印刷シート",
     "source": "データ種別",
@@ -81,6 +82,7 @@ QUAL_DEFAULT_COLUMNS = [
     "next_stage_label",
     "next_surveillance_window",
     "next_procedure_status",
+    "birth_date",
     "employee_id",
     "display_name",
     "birth_year_west",
@@ -104,6 +106,7 @@ QUAL_SORTABLE_COLUMNS = [
     "next_exam_period",
     "next_surveillance_window",
     "next_procedure_status",
+    "birth_date",
     "employee_id",
     "birth_year_west",
     "address",
@@ -111,7 +114,7 @@ QUAL_SORTABLE_COLUMNS = [
     "sheet_source",
     "last_updated",
 ]
-QUAL_DATE_COLUMNS = {"registration_date", "first_issue_date", "issue_date", "expiry_date", "last_updated"}
+QUAL_DATE_COLUMNS = {"registration_date", "first_issue_date", "issue_date", "expiry_date", "birth_date", "last_updated"}
 QUAL_SORT_LEVELS = 3
 
 
@@ -710,6 +713,7 @@ def manual_add() -> Any:
         "source_sheet": source_sheet,
         "employee_id": payload.get("employee_id"),
         "birth_year_west": payload.get("birth_year_west"),
+        "birth_date": payload.get("birth_date"),
         "address": payload.get("address"),
         "web_publish_no": payload.get("web_publish_no"),
     }
@@ -727,6 +731,7 @@ def manual_add() -> Any:
         "next_procedure_status",
         "print_sheet",
         "source_sheet",
+        "birth_date",
         "address",
         "web_publish_no",
     ]

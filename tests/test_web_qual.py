@@ -37,6 +37,7 @@ def sample_db(tmp_path: Path) -> Path:
         source_sheet="Sheet1",
         employee_id="E-001",
         birth_year_west="1985",
+        birth_date="1985-03-10",
         address="\u6771\u4eac\u90fd\u6e2f\u533a1-1-1",
         web_publish_no="WEB-100",
     )
@@ -58,6 +59,7 @@ def sample_db(tmp_path: Path) -> Path:
         source_sheet="Sheet2",
         employee_id="E-002",
         birth_year_west="1990",
+        birth_date="1990-07-15",
         address="\u6771\u4eac\u90fd\u65b0\u5bbf\u533a2-2-2",
         web_publish_no="WEB-200",
     )
@@ -90,6 +92,7 @@ def test_qualifications_index_html(sample_db: Path) -> None:
     assert "WEB-100" in text
     assert "次回ｻｰﾍﾞｲﾗﾝｽ/再評価受験期間" in text
     assert "生年(西暦)" in text
+    assert "生年月日" in text
     assert "東京都港区1-1-1" in text
     assert "header-meta" in text
 
@@ -115,6 +118,7 @@ def test_manual_add_update_delete(sample_db: Path) -> None:
         "source_sheet": "Manual",
         "employee_id": "E-777",
         "birth_year_west": "1978",
+        "birth_date": "1978-04-04",
         "address": "\u5927\u962a\u5e9c\u5927\u962a\u5e021-2-3",
         "web_publish_no": "WEB-777",
     }
@@ -132,6 +136,7 @@ def test_manual_add_update_delete(sample_db: Path) -> None:
     assert row.get("next_procedure_status") == "\u6848\u5185\u4e2d"
     assert row.get("employee_id") == "E-777"
     assert row.get("birth_year_west") == "1978"
+    assert str(row.get("birth_date")) == "1978-04-04"
     assert row.get("address") == "大阪府大阪市1-2-3"
     assert row.get("web_publish_no") == "WEB-777"
 
@@ -150,6 +155,7 @@ def test_manual_add_update_delete(sample_db: Path) -> None:
         "next_procedure_status": "\u5b8c\u4e86",
         "employee_id": "E-888",
         "birth_year_west": "1979",
+        "birth_date": "1979-05-05",
         "source_sheet": "Manual",
         "address": "大阪府堺市2-3-4",
         "web_publish_no": "WEB-888",
@@ -167,6 +173,7 @@ def test_manual_add_update_delete(sample_db: Path) -> None:
     assert row.get("next_procedure_status") == "\u5b8c\u4e86"
     assert row.get("employee_id") == "E-888"
     assert row.get("birth_year_west") == "1979"
+    assert str(row.get("birth_date")) == "1979-05-05"
     assert row.get("address") == "大阪府堺市2-3-4"
     assert row.get("web_publish_no") == "WEB-888"
 

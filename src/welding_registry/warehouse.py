@@ -224,6 +224,7 @@ def _ensure_roster_manual(con) -> None:
     _ensure_column(con, "roster_manual", "next_procedure_status", "VARCHAR")
     _ensure_column(con, "roster_manual", "employee_id", "VARCHAR")
     _ensure_column(con, "roster_manual", "birth_year_west", "VARCHAR")
+    _ensure_column(con, "roster_manual", "birth_date", "DATE")
     _ensure_column(con, "roster_manual", "source_sheet", "VARCHAR")
     _ensure_column(con, "roster_manual", "address", "VARCHAR")
     _ensure_column(con, "roster_manual", "web_publish_no", "VARCHAR")
@@ -750,6 +751,7 @@ def materialize_roster_all(db_path: Path | str) -> pd.DataFrame:
             "display_name",
             "employee_id",
             "birth_year_west",
+            "birth_date",
             "address",
             "web_publish_no",
             "last_updated",
@@ -773,6 +775,7 @@ def materialize_roster_all(db_path: Path | str) -> pd.DataFrame:
         override_columns = {
             "next_surveillance_window",
             "next_exam_period",
+            "birth_date",
             "address",
             "web_publish_no",
             "birth_year_west",
@@ -882,6 +885,7 @@ def materialize_roster_all(db_path: Path | str) -> pd.DataFrame:
             "category",
             "continuation_status",
             "next_stage_label",
+            "birth_date",
             "next_exam_period",
             "next_exam_window",
             "next_surveillance_window",
@@ -957,6 +961,7 @@ def list_qualifications(
             "next_exam_period",
             "next_surveillance_window",
             "next_procedure_status",
+            "birth_date",
             "employee_id",
             "birth_year_west",
             "address",
@@ -1058,6 +1063,7 @@ def add_manual_qualification(
     source_sheet: str | None = None,
     employee_id: str | None = None,
     birth_year_west: object | None = None,
+    birth_date: object | None = None,
     address: str | None = None,
     web_publish_no: str | None = None,
 ) -> None:
@@ -1091,6 +1097,7 @@ def add_manual_qualification(
     if not employee_value:
         employee_value = None
     birth_year_value = _optional_text(birth_year_west)
+    birth_date_value = _coerce_optional_date(birth_date)
     address_value = _optional_text(address)
     web_publish_value = _optional_text(web_publish_no)
 
@@ -1111,6 +1118,7 @@ def add_manual_qualification(
         ("source_sheet", source_value),
         ("employee_id", employee_value),
         ("birth_year_west", birth_year_value),
+        ("birth_date", birth_date_value),
         ("address", address_value),
         ("web_publish_no", web_publish_value),
     ]
@@ -1178,6 +1186,7 @@ def update_manual_qualification(
     source_sheet: str | None = None,
     employee_id: str | None = None,
     birth_year_west: object | None = None,
+    birth_date: object | None = None,
     address: str | None = None,
     web_publish_no: str | None = None,
 ) -> None:
@@ -1193,7 +1202,7 @@ def update_manual_qualification(
             SELECT qualification, registration_date, first_issue_date, issue_date, expiry_date,
                    category, continuation_status, next_stage_label, next_exam_period,
                    next_procedure_status, print_sheet, source_sheet, employee_id, birth_year_west,
-                   address, web_publish_no
+                   birth_date, address, web_publish_no
             FROM roster_manual
             WHERE license_no = ? AND name = ?
             """,
@@ -1221,6 +1230,7 @@ def update_manual_qualification(
         source_sheet=source_sheet if source_sheet is not None else row.get('source_sheet'),
         employee_id=employee_id if employee_id is not None else row.get('employee_id'),
         birth_year_west=birth_year_west if birth_year_west is not None else row.get('birth_year_west'),
+        birth_date=birth_date if birth_date is not None else row.get('birth_date'),
         address=address if address is not None else row.get('address'),
         web_publish_no=web_publish_no if web_publish_no is not None else row.get('web_publish_no'),
     )
