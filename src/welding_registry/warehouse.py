@@ -789,10 +789,11 @@ def materialize_roster_all(db_path: Path | str) -> pd.DataFrame:
                     )
                     if override_map.empty:
                         continue
-                    mask = deduped["license_key"].isin(override_map.index)
-                    if not mask.any():
-                        continue
-                    deduped.loc[mask, column] = deduped.loc[mask, "license_key"].map(override_map)
+                    for idx, lic in enumerate(deduped["license_key"].tolist()):
+                        value = override_map.get(lic)
+                        if not _has_data(value):
+                            continue
+                        deduped.iat[idx, deduped.columns.get_loc(column)] = value
 
         if "next_surveillance_window" not in deduped.columns:
             if "next_exam_window" in deduped.columns:
