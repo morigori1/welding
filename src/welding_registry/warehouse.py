@@ -770,6 +770,30 @@ def materialize_roster_all(db_path: Path | str) -> pd.DataFrame:
                 if mask.any():
                     deduped.loc[mask, column] = fallback_values.loc[mask]
 
+        override_columns = {
+            "next_surveillance_window",
+            "next_exam_period",
+            "address",
+            "web_publish_no",
+            "birth_year_west",
+        }
+        if "license_key" in combined.columns:
+            ingest_rows = combined[combined["source"] == "ingest"].copy()
+            if not ingest_rows.empty:
+                for column in override_columns:
+                    if column not in deduped.columns or column not in ingest_rows.columns:
+                        continue
+                    override_map = (
+                        ingest_rows.groupby("license_key", sort=False)[column]
+                        .apply(lambda series: next((val for val in series if _has_data(val)), None))
+                    )
+                    if override_map.empty:
+                        continue
+                    mask = deduped["license_key"].isin(override_map.index)
+                    if not mask.any():
+                        continue
+                    deduped.loc[mask, column] = deduped.loc[mask, "license_key"].map(override_map)
+
         if "next_surveillance_window" not in deduped.columns:
             if "next_exam_window" in deduped.columns:
                 deduped["next_surveillance_window"] = (
