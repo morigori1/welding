@@ -43,6 +43,41 @@ class PrintArchiveResult:
     recorded_at: datetime
 
 
+@dataclass(frozen=True)
+class PrintRun:
+    print_id: int
+    created_at: datetime
+    printed_at: datetime | None
+    generated_at: datetime | None
+    sheet: str
+    sheet_label: str
+    orientation: str
+    rows_per_page: int
+    record_count: int
+    page_total: int
+    columns: list[str]
+    content_hash: str
+    csv_path: Path
+    payload_path: Path
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class PrintRunSummary:
+    print_id: int
+    created_at: datetime
+    printed_at: datetime | None
+    generated_at: datetime | None
+    sheet: str
+    sheet_label: str
+    orientation: str
+    rows_per_page: int
+    record_count: int
+    page_total: int
+    columns: list[str]
+    content_hash: str
+
+
 def _slugify(value: str) -> str:
     text = value.strip()
     if not text:
@@ -188,7 +223,7 @@ def archive_print_run(
                 str(rel_csv),
                 str(rel_payload),
             ],
-        )
+    )
 
     return PrintArchiveResult(
         print_id=int(print_id),
@@ -198,3 +233,130 @@ def archive_print_run(
         recorded_at=now,
     )
 
+
+def list_print_runs(
+    duckdb_path: Path | str,
+    *,
+    limit: int = 200,
+) -> list[PrintRunSummary]:
+    """Return recent print runs sorted by issued/printed timestamp descending."""
+
+    resolved_duckdb = resolve_duckdb_path(duckdb_path)
+    import duckdb  # type: ignore
+
+    with duckdb.connect(str(resolved_duckdb)) as con:
+        _ensure_tables(con)
+        rows = con.execute(
+            """
+            SELECT
+                print_id,
+                created_at,
+                printed_at,
+                generated_at,
+                sheet,
+                sheet_label,
+                orientation,
+                rows_per_page,
+                record_count,
+                page_total,
+                columns,
+                content_hash
+            FROM issue_print_runs
+            ORDER BY COALESCE(printed_at, created_at) DESC, print_id DESC
+            LIMIT ?
+            """,
+            [int(limit)],
+        ).fetchall()
+
+    summaries: list[PrintRunSummary] = []
+    for row in rows:
+        cols_raw = row[10] if len(row) > 10 else "[]"
+        try:
+            cols = json.loads(cols_raw) if isinstance(cols_raw, str) else list(cols_raw or [])
+        except Exception:
+            cols = []
+        summaries.append(
+            PrintRunSummary(
+                print_id=int(row[0]),
+                created_at=row[1],
+                printed_at=row[2],
+                generated_at=row[3],
+                sheet=str(row[4] or ""),
+                sheet_label=str(row[5] or ""),
+                orientation=str(row[6] or "portrait"),
+                rows_per_page=int(row[7] or 40),
+                record_count=int(row[8] or 0),
+                page_total=int(row[9] or 0),
+                columns=list(cols),
+                content_hash=str(row[11] or ""),
+            )
+        )
+    return summaries
+
+
+def load_print_run(duckdb_path: Path | str, print_id: int) -> PrintRun | None:
+    """Load a previously archived print run including payload JSON."""
+
+    resolved_duckdb = resolve_duckdb_path(duckdb_path)
+    warehouse_root = resolve_warehouse_path()
+    import duckdb  # type: ignore
+
+    with duckdb.connect(str(resolved_duckdb)) as con:
+        _ensure_tables(con)
+        row = con.execute(
+            """
+            SELECT
+                print_id,
+                created_at,
+                printed_at,
+                generated_at,
+                sheet,
+                sheet_label,
+                orientation,
+                rows_per_page,
+                record_count,
+                page_total,
+                columns,
+                content_hash,
+                csv_path,
+                payload_path
+            FROM issue_print_runs
+            WHERE print_id = ?
+            """,
+            [int(print_id)],
+        ).fetchone()
+    if row is None:
+        return None
+
+    try:
+        columns = json.loads(row[10]) if row[10] else []
+    except Exception:
+        columns = []
+
+    csv_path = warehouse_root / str(row[12])
+    payload_path = warehouse_root / str(row[13])
+    payload: dict[str, Any] = {}
+    if payload_path.exists():
+        try:
+            with payload_path.open("r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except Exception:
+            payload = {}
+
+    return PrintRun(
+        print_id=int(row[0]),
+        created_at=row[1],
+        printed_at=row[2],
+        generated_at=row[3],
+        sheet=str(row[4] or ""),
+        sheet_label=str(row[5] or ""),
+        orientation=str(row[6] or "portrait"),
+        rows_per_page=int(row[7] or 40),
+        record_count=int(row[8] or 0),
+        page_total=int(row[9] or 0),
+        columns=list(columns),
+        content_hash=str(row[11] or ""),
+        csv_path=csv_path,
+        payload_path=payload_path,
+        payload=payload,
+    )

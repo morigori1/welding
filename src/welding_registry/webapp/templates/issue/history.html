@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="history-head">
+    <h1>発行履歴</h1>
+    <p class="muted">プレビューから記録した帳票を最新順に表示します。選択して再印刷できます。</p>
+    <div class="history-actions">
+      <a href="{{ preview_url }}" class="btn secondary">プレビューに戻る</a>
+    </div>
+  </section>
+
+  {% if runs %}
+    <table class="history-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>発行日時</th>
+          <th>生成日時</th>
+          <th>シート</th>
+          <th>件数</th>
+          <th>頁</th>
+          <th>行/頁</th>
+          <th>方向</th>
+          <th class="actions">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+          <tr>
+            <td>{{ run.print_id }}</td>
+            <td>{{ run.printed_at or '-' }}</td>
+            <td>{{ run.generated_at or '-' }}</td>
+            <td>{{ run.sheet_label }}</td>
+            <td>{{ run.record_count }}</td>
+            <td>{{ run.page_total }}</td>
+            <td>{{ run.rows_per_page }}</td>
+            <td>{{ run.orientation }}</td>
+            <td class="actions">
+              <a href="{{ run.detail_url }}" target="_blank" class="btn small">開く</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>発行履歴がまだありません。プレビューから「発行」ボタンで保存できます。</p>
+  {% endif %}
+{% endblock %}

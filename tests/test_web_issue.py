@@ -154,3 +154,32 @@ def test_issue_archive_endpoint_records(sample_duckdb: Path, tmp_path: Path, mon
     with duckdb.connect(str(sample_duckdb)) as con:
         rows = con.execute("SELECT sheet_label, record_count FROM issue_print_runs").fetchall()
     assert rows == [("A", 1)]
+
+
+def test_issue_button_records_and_history(sample_duckdb: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    warehouse_root = tmp_path / "warehouse"
+    monkeypatch.setenv("WELDING_WAREHOUSE_ROOT", str(warehouse_root))
+    client = _make_client(sample_duckdb)
+
+    resp = client.get("/issue/print", query_string={"sheet": "A"})
+    payload = _extract_archive_payload(resp.data.decode("utf-8"))
+
+    issue_resp = client.post("/issue/issue", json=payload)
+    assert issue_resp.status_code == 201
+    issue_body = issue_resp.get_json()
+    assert issue_body["status"] == "ok"
+    print_id = issue_body["print_id"]
+    assert print_id == 1
+    assert "print_view_url" in issue_body
+
+    history_resp = client.get("/issue/runs")
+    assert history_resp.status_code == 200
+    history_html = history_resp.data.decode("utf-8")
+    assert f">{print_id}<" in history_html
+    assert "発行履歴" in history_html
+
+    run_resp = client.get(f"/issue/runs/{print_id}")
+    assert run_resp.status_code == 200
+    run_html = run_resp.data.decode("utf-8")
+    assert f"発行記録 #{print_id}" in run_html
+    assert "PDF保存" not in run_html  # archived view should not show new archive button

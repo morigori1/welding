@@ -7,13 +7,14 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import pandas as pd
-from flask import Blueprint, current_app, jsonify, render_template, request, url_for
+from flask import Blueprint, current_app, jsonify, render_template, request, url_for, abort
 
 from ..issue import (
     COLUMN_LABELS,
     COLUMN_WIDTHS,
     DEFAULT_ISSUE_COLUMNS,
     ensure_due_dataframe,
+    IssuePage,
     list_issue_columns,
     paginate_issue,
 )
@@ -21,7 +22,7 @@ from ..warehouse import (
     DEFAULT_SHEET,
     list_report_definitions,
 )
-from ..print_archive import archive_print_run
+from ..print_archive import archive_print_run, list_print_runs, load_print_run, PrintRun
 
 SHEET_ALL_TOKEN = "__ALL__"
 SHEET_ALL_LABEL = "全て"
@@ -100,6 +101,163 @@ def _content_digest(columns: List[str], pages: List[Dict[str, Any]]) -> str:
     blob = json.dumps(bundle, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
 
+
+def _archive_payload(payload: Dict[str, Any], *, printed_at_override: str | None = None) -> PrintArchiveResult:
+    if not isinstance(payload, dict):
+        raise ValueError("無効なペイロードです。")
+
+    columns_raw = payload.get("columns")
+    if not isinstance(columns_raw, list) or not columns_raw:
+        raise ValueError("列情報(columns)が不正です。")
+    columns = [str(col) for col in columns_raw]
+
+    pages = payload.get("pages", [])
+    if not isinstance(pages, list):
+        raise ValueError("ページ情報(pages)が不正です。")
+
+    rows: List[Dict[str, str]] = []
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        page_rows = page.get("rows", [])
+        if not isinstance(page_rows, list):
+            continue
+        for row in page_rows:
+            if isinstance(row, dict):
+                rows.append({col: str(row.get(col, "")) for col in columns})
+
+    df = pd.DataFrame(rows, columns=columns)
+    record_count = int(payload.get("record_count") or len(rows))
+    rows_per_page_default = int(current_app.config.get("WELDING_ROWS_PER_PAGE", 40))
+    rows_per_page = int(payload.get("rows_per_page") or rows_per_page_default or 40)
+    if rows_per_page <= 0:
+        rows_per_page = rows_per_page_default or 40
+    page_total = int(payload.get("page_total") or len(pages) or max(1, (record_count + rows_per_page - 1) // rows_per_page))
+
+    orientation = str(payload.get("orientation") or "portrait")
+    if orientation not in ALLOWED_ORIENTATIONS:
+        orientation = "portrait"
+
+    sheet_value = str(payload.get("sheet") or "")
+    sheet_label_value = str(payload.get("sheet_label") or payload.get("sheet") or SHEET_ALL_LABEL)
+
+    printed_at_value = printed_at_override or payload.get("printed_at")
+    if isinstance(printed_at_value, datetime):
+        printed_at_value = printed_at_value.isoformat()
+    elif printed_at_value:
+        printed_at_value = str(printed_at_value)
+    else:
+        printed_at_value = None
+
+    payload_copy: Dict[str, Any] = dict(payload)
+    payload_copy["columns"] = columns
+    payload_copy["record_count"] = record_count
+    payload_copy["page_total"] = page_total
+    payload_copy.setdefault("pages", pages)
+    if printed_at_value:
+        payload_copy["printed_at"] = printed_at_value
+
+    result = archive_print_run(
+        duckdb_path=Path(current_app.config["WELDING_DUCKDB_PATH"]),
+        payload=payload_copy,
+        df=df,
+        columns=columns,
+        sheet=sheet_value,
+        sheet_label=sheet_label_value,
+        orientation=orientation,
+        rows_per_page=rows_per_page,
+        page_total=page_total,
+        record_count=record_count,
+        generated_at=str(payload.get("generated_at")) if payload.get("generated_at") else None,
+        printed_at=printed_at_value,
+        content_hash=str(payload.get("content_hash") or ""),
+    )
+    return result
+
+
+def _issue_pages_from_payload(payload: Dict[str, Any], columns: List[str]) -> List[IssuePage]:
+    pages_data = payload.get("pages", [])
+    if not isinstance(pages_data, list):
+        return []
+    issue_pages: List[IssuePage] = []
+    total_pages = len(pages_data) or 1
+    counter = 0
+    for page in pages_data:
+        if not isinstance(page, dict):
+            continue
+        counter += 1
+        rows_data = page.get("rows", [])
+        formatted_rows: List[Dict[str, str]] = []
+        if isinstance(rows_data, list):
+            for row in rows_data:
+                if isinstance(row, dict):
+                    formatted_rows.append({col: str(row.get(col, "")) for col in columns})
+        issue_pages.append(
+            IssuePage(
+                number=counter,
+                sheet=str(page.get("sheet") or payload.get("sheet") or DEFAULT_SHEET),
+                sheet_page=int(page.get("sheet_page") or counter),
+                sheet_total=int(page.get("sheet_total") or total_pages),
+                rows=formatted_rows,
+            )
+        )
+    return issue_pages
+
+
+def _build_run_context(run: PrintRun) -> Dict[str, Any]:
+    payload = run.payload or {}
+    columns = payload.get("columns")
+    if not isinstance(columns, list) or not columns:
+        columns = run.columns or []
+    columns = [str(col) for col in columns]
+
+    pages = _issue_pages_from_payload(payload, columns)
+    df = None
+    if not pages and run.csv_path.exists():
+        try:
+            df = pd.read_csv(run.csv_path)
+            if not columns:
+                columns = list(df.columns)
+            pages, page_total = paginate_issue(
+                df,
+                columns=columns,
+                rows_per_page=run.rows_per_page,
+                max_pages=None,
+            )
+        except Exception:
+            pages = []
+            df = None
+    else:
+        page_total = payload.get("page_total") or run.page_total or len(pages)
+
+    record_count = payload.get("record_count") or run.record_count
+    if not record_count and df is not None:
+        record_count = len(df)
+
+    generated_at = payload.get("generated_at") or (
+        run.generated_at.isoformat(timespec="minutes") if run.generated_at else ""
+    )
+    printed_at = run.printed_at.isoformat(timespec="minutes") if run.printed_at else ""
+
+    return {
+        "title": f"発行記録 #{run.print_id}",
+        "pages": pages,
+        "selected_columns": columns,
+        "column_labels": COLUMN_LABELS,
+        "column_widths": COLUMN_WIDTHS,
+        "rows_per_page": run.rows_per_page,
+        "orientation": run.orientation or "portrait",
+        "generated_at": generated_at,
+        "record_count": record_count,
+        "page_total": page_total if page_total else len(pages),
+        "print_url": None,
+        "preview_url": url_for("issue.history"),
+        "history_url": url_for("issue.history"),
+        "archive_url": None,
+        "archive_payload": {},
+        "run": run,
+        "printed_at": printed_at,
+    }
 
 def _build_issue_context(*, max_pages: int | None = None) -> Dict[str, Any]:
     config = current_app.config
@@ -265,8 +423,11 @@ def _build_issue_context(*, max_pages: int | None = None) -> Dict[str, Any]:
         "preview_limited": preview_limited,
         "archive_payload": archive_payload,
         "archive_url": url_for("issue.archive_print"),
+        "issue_url": url_for("issue.issue_now"),
+        "history_url": url_for("issue.history"),
         "content_hash": digest,
         "filtered_df": filtered_df,
+        "printed_at": "",
     }
 
 
@@ -291,53 +452,10 @@ def archive_print() -> Any:
     if not isinstance(payload, dict):
         return jsonify({"error": "Invalid JSON payload"}), 400
 
-    columns = payload.get("columns")
-    if not isinstance(columns, list) or not all(isinstance(col, str) for col in columns):
-        return jsonify({"error": "列情報(columns)が不正です"}), 400
-
-    pages = payload.get("pages", [])
-    if not isinstance(pages, list):
-        return jsonify({"error": "ページ情報(pages)が不正です"}), 400
-
-    rows: List[Dict[str, Any]] = []
-    for page in pages:
-        if not isinstance(page, dict):
-            continue
-        page_rows = page.get("rows", [])
-        if not isinstance(page_rows, list):
-            continue
-        for row in page_rows:
-            if isinstance(row, dict):
-                rows.append({col: str(row.get(col, "")) for col in columns})
-
-    df = pd.DataFrame(rows, columns=columns)
-    duckdb_path = Path(current_app.config["WELDING_DUCKDB_PATH"])
-    rows_per_page = payload.get("rows_per_page") or current_app.config.get("WELDING_ROWS_PER_PAGE", 40)
-    orientation = payload.get("orientation", "portrait")
-    page_total = payload.get("page_total", len(pages))
-    record_count = payload.get("record_count", len(rows))
-    sheet_value = str(payload.get("sheet") or "")
-    sheet_label = str(payload.get("sheet_label") or sheet_value or SHEET_ALL_LABEL)
-    generated_at = payload.get("generated_at")
-    printed_at = payload.get("printed_at")
-    content_hash = payload.get("content_hash", "")
-
     try:
-        result = archive_print_run(
-            duckdb_path=duckdb_path,
-            payload=payload,
-            df=df,
-            columns=columns,
-            sheet=sheet_value,
-            sheet_label=sheet_label,
-            orientation=str(orientation),
-            rows_per_page=int(rows_per_page),
-            page_total=int(page_total),
-            record_count=int(record_count),
-            generated_at=str(generated_at) if generated_at else None,
-            printed_at=str(printed_at) if printed_at else None,
-            content_hash=str(content_hash),
-        )
+        result = _archive_payload(payload)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:  # pragma: no cover - defensive
         return jsonify({"error": f"印刷履歴の保存でエラーが発生しました: {exc}"}), 500
 
@@ -353,3 +471,81 @@ def archive_print() -> Any:
         ),
         201,
     )
+
+
+@issue_bp.route("/issue", methods=["POST"])
+def issue_now() -> Any:
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Invalid JSON payload"}), 400
+
+    issued_at = datetime.now().isoformat(timespec="seconds")
+    try:
+        result = _archive_payload(payload, printed_at_override=issued_at)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:  # pragma: no cover - defensive
+        return jsonify({"error": f"発行履歴の保存でエラーが発生しました: {exc}"}), 500
+
+    detail_url = url_for("issue.run_detail", print_id=result.print_id)
+    return (
+        jsonify(
+            {
+                "status": "ok",
+                "print_id": result.print_id,
+                "print_view_url": detail_url,
+                "history_url": url_for("issue.history"),
+            }
+        ),
+        201,
+    )
+
+
+@issue_bp.route("/runs", methods=["GET"])
+def history() -> Any:
+    duckdb_path = Path(current_app.config["WELDING_DUCKDB_PATH"])
+    try:
+        limit = int(request.args.get("limit", 200))
+    except ValueError:
+        limit = 200
+    summaries = list_print_runs(duckdb_path, limit=limit)
+
+    def _fmt(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d %H:%M")
+        return str(value)
+
+    runs = [
+        {
+            "print_id": summary.print_id,
+            "printed_at": _fmt(summary.printed_at),
+            "created_at": _fmt(summary.created_at),
+            "generated_at": _fmt(summary.generated_at),
+            "sheet_label": summary.sheet_label or summary.sheet or SHEET_ALL_LABEL,
+            "orientation": "横" if summary.orientation == "landscape" else "縦",
+            "rows_per_page": summary.rows_per_page,
+            "record_count": summary.record_count,
+            "page_total": summary.page_total,
+            "detail_url": url_for("issue.run_detail", print_id=summary.print_id),
+        }
+        for summary in summaries
+    ]
+    return render_template(
+        "issue/history.html",
+        runs=runs,
+        limit=limit,
+        title="発行履歴",
+        preview_url=url_for("issue.index"),
+    )
+
+
+@issue_bp.route("/runs/<int:print_id>", methods=["GET"])
+def run_detail(print_id: int) -> Any:
+    duckdb_path = Path(current_app.config["WELDING_DUCKDB_PATH"])
+    run = load_print_run(duckdb_path, print_id)
+    if run is None:
+        abort(404)
+    context = _build_run_context(run)
+    return render_template("issue/print.html", **context)

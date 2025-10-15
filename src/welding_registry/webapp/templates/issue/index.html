@@ -53,9 +53,12 @@
       </div>
       <div class="form-actions">
         <button type="submit" class="btn primary">プレビュー更新</button>
+        <button type="button" class="btn action" id="issue-button">発行</button>
         <a href="{{ print_url }}" target="_blank" class="btn secondary">印刷ビューを開く</a>
+        <a href="{{ history_url }}" class="btn link">発行履歴へ</a>
       </div>
     </form>
+    <div id="issue-status" class="notice info" style="display:none"></div>
   </section>
 
   {% if regenerated %}
@@ -76,4 +79,60 @@
       <div class="empty-state">条件に一致する記録はありません。</div>
     {% endif %}
   </section>
+
+  <script>
+    (function () {
+      const issueButton = document.getElementById("issue-button");
+      if (!issueButton) {
+        return;
+      }
+      const archivePayload = {{ archive_payload|tojson }};
+      const issueUrl = "{{ issue_url }}";
+      const statusBox = document.getElementById("issue-status");
+      const historyUrl = "{{ history_url }}";
+
+      function showStatus(kind, message) {
+        if (!statusBox) {
+          return;
+        }
+        statusBox.dataset.status = kind;
+        statusBox.textContent = message;
+        statusBox.style.display = "block";
+      }
+
+      issueButton.addEventListener("click", () => {
+        const payload = JSON.parse(JSON.stringify(archivePayload));
+        payload.printed_at = new Date().toISOString();
+        issueButton.disabled = true;
+        fetch(issueUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then((resp) =>
+            resp.json().then((body) => ({
+              ok: resp.ok,
+              body,
+            }))
+          )
+          .then(({ ok, body }) => {
+            issueButton.disabled = false;
+            if (ok) {
+              const runLink = body.print_view_url
+                ? ` 詳細は<a href="${body.print_view_url}" target="_blank">発行記録#${body.print_id}</a>で確認できます。`
+                : "";
+              showStatus("success", `発行を記録しました (#${body.print_id})。${runLink}`);
+            } else {
+              const error =
+                body && body.error ? body.error : "発行の記録に失敗しました。";
+              showStatus("error", error);
+            }
+          })
+          .catch(() => {
+            issueButton.disabled = false;
+            showStatus("error", "発行の記録に失敗しました。");
+          });
+      });
+    })();
+  </script>
 {% endblock %}

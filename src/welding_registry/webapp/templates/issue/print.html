@@ -37,9 +37,14 @@
   <body>
     <div class="toolbar">
       <a href="{{ preview_url }}">← プレビューに戻る</a>
-      <div>行/頁: {{ rows_per_page }} ・ 方向: {{ '縦' if orientation == 'portrait' else '横' }} ・ 更新: {{ generated_at }}</div>
+      {% if history_url %}
+        <a href="{{ history_url }}" target="_blank">発行履歴</a>
+      {% endif %}
+      <div>行/頁: {{ rows_per_page }} ・ 方向: {{ '縦' if orientation == 'portrait' else '横' }} ・ 更新: {{ generated_at }}{% if printed_at %} ・ 発行: {{ printed_at }}{% endif %}</div>
       <div class="spacer"></div>
-      <button type="button" id="pdf-save-button">PDF保存</button>
+      {% if archive_url %}
+        <button type="button" id="pdf-save-button">PDF保存</button>
+      {% endif %}
       <button type="button" onclick="window.print()">印刷</button>
     </div>
     <div id="archive-status" class="archive-status"></div>
@@ -54,7 +59,7 @@
         const archiveBasePayload = {{ archive_payload|tojson }};
         const statusBox = document.getElementById("archive-status");
         const pdfButton = document.getElementById("pdf-save-button");
-        if (!pdfButton) {
+        if (!pdfButton || !archiveUrl) {
           return;
         }
         let pendingArchive = false;
