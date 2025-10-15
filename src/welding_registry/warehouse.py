@@ -225,6 +225,8 @@ def _ensure_roster_manual(con) -> None:
     _ensure_column(con, "roster_manual", "employee_id", "VARCHAR")
     _ensure_column(con, "roster_manual", "birth_year_west", "VARCHAR")
     _ensure_column(con, "roster_manual", "source_sheet", "VARCHAR")
+    _ensure_column(con, "roster_manual", "address", "VARCHAR")
+    _ensure_column(con, "roster_manual", "web_publish_no", "VARCHAR")
     _ensure_column(con, "roster_manual", "created", "TIMESTAMP")
 
 def _ensure_report_table(con) -> None:
@@ -741,11 +743,16 @@ def materialize_roster_all(db_path: Path | str) -> pd.DataFrame:
             "continuation_status",
             "next_stage_label",
             "next_exam_period",
+            "next_exam_window",
+            "next_surveillance_window",
             "next_procedure_status",
             "name",
             "display_name",
             "employee_id",
             "birth_year_west",
+            "address",
+            "web_publish_no",
+            "last_updated",
         ]
         if "license_key" in combined.columns:
             grouped = combined.groupby("license_key", sort=False)
@@ -762,6 +769,41 @@ def materialize_roster_all(db_path: Path | str) -> pd.DataFrame:
                 mask = deduped[column].apply(lambda value: not _has_data(value))
                 if mask.any():
                     deduped.loc[mask, column] = fallback_values.loc[mask]
+
+        if "next_surveillance_window" not in deduped.columns:
+            if "next_exam_window" in deduped.columns:
+                deduped["next_surveillance_window"] = (
+                    deduped["next_exam_window"].astype("string").fillna("")
+                )
+            elif "next_exam_period" in deduped.columns:
+                deduped["next_surveillance_window"] = (
+                    deduped["next_exam_period"].astype("string").fillna("")
+                )
+            else:
+                deduped["next_surveillance_window"] = pd.Series(
+                    [""] * len(deduped), dtype="string"
+                )
+        else:
+            deduped["next_surveillance_window"] = (
+                deduped["next_surveillance_window"].astype("string").fillna("")
+            )
+
+        if "next_exam_period" in deduped.columns and "next_surveillance_window" in deduped.columns:
+            mask = deduped["next_exam_period"].astype("string").str.strip().isin(["", "nan"])
+            if mask.any():
+                deduped.loc[mask, "next_exam_period"] = deduped.loc[mask, "next_surveillance_window"]
+        elif "next_exam_period" not in deduped.columns and "next_surveillance_window" in deduped.columns:
+            deduped["next_exam_period"] = deduped["next_surveillance_window"]
+
+        if "address" not in deduped.columns:
+            deduped["address"] = pd.Series([""] * len(deduped), dtype="string")
+        else:
+            deduped["address"] = deduped["address"].astype("string").fillna("")
+
+        if "web_publish_no" not in deduped.columns:
+            deduped["web_publish_no"] = pd.Series([""] * len(deduped), dtype="string")
+        else:
+            deduped["web_publish_no"] = deduped["web_publish_no"].astype("string").fillna("")
 
         deduped["sheet_source"] = "auto"
         if not manual_entries.empty:
@@ -816,11 +858,15 @@ def materialize_roster_all(db_path: Path | str) -> pd.DataFrame:
             "continuation_status",
             "next_stage_label",
             "next_exam_period",
+            "next_exam_window",
+            "next_surveillance_window",
             "next_procedure_status",
             "birth_year_west",
             "print_sheet",
             "source_sheet",
             "sheet_source",
+            "address",
+            "web_publish_no",
         ]
         for col in text_columns:
             if col in deduped.columns:
@@ -884,9 +930,13 @@ def list_qualifications(
             "display_name",
             "next_stage_label",
             "next_exam_period",
+            "next_surveillance_window",
             "next_procedure_status",
             "employee_id",
             "birth_year_west",
+            "address",
+            "web_publish_no",
+            "sheet_source",
         ]
         if sheet_field:
             text_columns.append(sheet_field)
@@ -894,11 +944,29 @@ def list_qualifications(
             if col in roster.columns:
                 roster[col] = roster[col].astype("string")
 
-        date_columns = ["registration_date", "first_issue_date", "issue_date", "expiry_date"]
+        if "next_surveillance_window" in roster.columns:
+            roster["next_surveillance_window"] = roster["next_surveillance_window"].astype("string").fillna("")
+        if "next_exam_period" in roster.columns and "next_surveillance_window" in roster.columns:
+            mask = roster["next_exam_period"].astype("string").str.strip().isin(["", "nan"])
+            if mask.any():
+                roster.loc[mask, "next_exam_period"] = roster.loc[mask, "next_surveillance_window"]
+        elif "next_exam_period" not in roster.columns and "next_surveillance_window" in roster.columns:
+            roster["next_exam_period"] = roster["next_surveillance_window"]
+        elif "next_surveillance_window" not in roster.columns and "next_exam_period" in roster.columns:
+            roster["next_surveillance_window"] = roster["next_exam_period"]
+
+        for col in ("address", "web_publish_no", "sheet_source"):
+            if col in roster.columns:
+                roster[col] = roster[col].astype("string").fillna("")
+
+        date_columns = ["registration_date", "first_issue_date", "issue_date", "expiry_date", "last_updated"]
         for col in date_columns:
             if col in roster.columns:
                 series = pd.to_datetime(roster[col], errors="coerce")
-                roster[col] = series.dt.strftime("%Y-%m-%d").fillna("")
+                if col == "last_updated":
+                    roster[col] = series.dt.strftime("%Y-%m-%d %H:%M").fillna("")
+                else:
+                    roster[col] = series.dt.strftime("%Y-%m-%d").fillna("")
 
         if include_reports and _table_exists(con, "qual_reports"):
             report_df = _fetch_table(con, "qual_reports")
@@ -965,6 +1033,8 @@ def add_manual_qualification(
     source_sheet: str | None = None,
     employee_id: str | None = None,
     birth_year_west: object | None = None,
+    address: str | None = None,
+    web_publish_no: str | None = None,
 ) -> None:
     path = _as_path(db_path)
     name_clean = _clean_token(name)
@@ -996,6 +1066,8 @@ def add_manual_qualification(
     if not employee_value:
         employee_value = None
     birth_year_value = _optional_text(birth_year_west)
+    address_value = _optional_text(address)
+    web_publish_value = _optional_text(web_publish_no)
 
     record_items = [
         ("name", name_clean),
@@ -1014,6 +1086,8 @@ def add_manual_qualification(
         ("source_sheet", source_value),
         ("employee_id", employee_value),
         ("birth_year_west", birth_year_value),
+        ("address", address_value),
+        ("web_publish_no", web_publish_value),
     ]
 
     columns_clause = ", ".join(name for name, _ in record_items)
@@ -1079,6 +1153,8 @@ def update_manual_qualification(
     source_sheet: str | None = None,
     employee_id: str | None = None,
     birth_year_west: object | None = None,
+    address: str | None = None,
+    web_publish_no: str | None = None,
 ) -> None:
     path = _as_path(db_path)
     name_clean = _clean_token(name)
@@ -1091,7 +1167,8 @@ def update_manual_qualification(
             """
             SELECT qualification, registration_date, first_issue_date, issue_date, expiry_date,
                    category, continuation_status, next_stage_label, next_exam_period,
-                   next_procedure_status, print_sheet, source_sheet, employee_id, birth_year_west
+                   next_procedure_status, print_sheet, source_sheet, employee_id, birth_year_west,
+                   address, web_publish_no
             FROM roster_manual
             WHERE license_no = ? AND name = ?
             """,
@@ -1119,6 +1196,8 @@ def update_manual_qualification(
         source_sheet=source_sheet if source_sheet is not None else row.get('source_sheet'),
         employee_id=employee_id if employee_id is not None else row.get('employee_id'),
         birth_year_west=birth_year_west if birth_year_west is not None else row.get('birth_year_west'),
+        address=address if address is not None else row.get('address'),
+        web_publish_no=web_publish_no if web_publish_no is not None else row.get('web_publish_no'),
     )
 
 

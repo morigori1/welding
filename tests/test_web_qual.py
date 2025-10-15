@@ -37,6 +37,8 @@ def sample_db(tmp_path: Path) -> Path:
         source_sheet="Sheet1",
         employee_id="E-001",
         birth_year_west="1985",
+        address="\u6771\u4eac\u90fd\u6e2f\u533a1-1-1",
+        web_publish_no="WEB-100",
     )
     add_manual_qualification(
         db_path,
@@ -56,6 +58,8 @@ def sample_db(tmp_path: Path) -> Path:
         source_sheet="Sheet2",
         employee_id="E-002",
         birth_year_west="1990",
+        address="\u6771\u4eac\u90fd\u65b0\u5bbf\u533a2-2-2",
+        web_publish_no="WEB-200",
     )
     add_report_definition(
         db_path,
@@ -63,6 +67,7 @@ def sample_db(tmp_path: Path) -> Path:
         label="\u5b9a\u671f\u691c\u67fb",
         description="\u5e74\u6b21\u70b9\u691c",
     )
+    materialize_roster_all(db_path)
     return db_path
 
 
@@ -82,6 +87,10 @@ def test_qualifications_index_html(sample_db: Path) -> None:
     assert "\u5b9a\u671f\u691c\u67fb" in text
     assert "option value=\"inspection\"" in text
     assert "\u30ec\u30dd\u30fc\u30c8\u5b9a\u7fa9\u767b\u9332" in text
+    assert "WEB-100" in text
+    assert "次回ｻｰﾍﾞｲﾗﾝｽ/再評価受験期間" in text
+    assert "生年(西暦)" in text
+    assert "東京都港区1-1-1" in text
 
 
 def test_manual_add_update_delete(sample_db: Path) -> None:
@@ -105,6 +114,8 @@ def test_manual_add_update_delete(sample_db: Path) -> None:
         "source_sheet": "Manual",
         "employee_id": "E-777",
         "birth_year_west": "1978",
+        "address": "\u5927\u962a\u5e9c\u5927\u962a\u5e021-2-3",
+        "web_publish_no": "WEB-777",
     }
     resp = client.post("/qualifications/manual", json=payload)
     assert resp.status_code == 200
@@ -120,6 +131,8 @@ def test_manual_add_update_delete(sample_db: Path) -> None:
     assert row.get("next_procedure_status") == "\u6848\u5185\u4e2d"
     assert row.get("employee_id") == "E-777"
     assert row.get("birth_year_west") == "1978"
+    assert row.get("address") == "大阪府大阪市1-2-3"
+    assert row.get("web_publish_no") == "WEB-777"
 
     resp = client.post(
         "/qualifications/manual",
@@ -132,11 +145,13 @@ def test_manual_add_update_delete(sample_db: Path) -> None:
             "continuation_status": "\u505c\u6b62",
             "registration_date": "2026-02-01",
             "next_stage_label": "\u7279\u5225\u5bfe\u5fdc",
-            "next_exam_period": "2027/01/01〜2027/04/30",
-            "next_procedure_status": "\u5b8c\u4e86",
-            "employee_id": "E-888",
-            "birth_year_west": "1979",
-            "source_sheet": "Manual",
+        "next_exam_period": "2027/01/01〜2027/04/30",
+        "next_procedure_status": "\u5b8c\u4e86",
+        "employee_id": "E-888",
+        "birth_year_west": "1979",
+        "source_sheet": "Manual",
+        "address": "大阪府堺市2-3-4",
+        "web_publish_no": "WEB-888",
         },
     )
     assert resp.status_code == 200
@@ -151,6 +166,8 @@ def test_manual_add_update_delete(sample_db: Path) -> None:
     assert row.get("next_procedure_status") == "\u5b8c\u4e86"
     assert row.get("employee_id") == "E-888"
     assert row.get("birth_year_west") == "1979"
+    assert row.get("address") == "大阪府堺市2-3-4"
+    assert row.get("web_publish_no") == "WEB-888"
 
     resp = client.post("/qualifications/manual/A-003/delete", json={"name": "\u9ad8\u6a4b \u4e09\u90ce"})
     assert resp.status_code == 200

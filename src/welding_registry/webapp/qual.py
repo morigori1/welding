@@ -53,13 +53,17 @@ QUAL_COLUMN_LABELS = {
     "print_sheet": "印刷シート",
     "source": "データ種別",
     "next_stage_label": "次回ステージ",
-    "next_exam_period": "\u6b21\u56de\uff7b\uff70\uff8d\uff9e\uff72\uff97\uff9d\uff7d/\u518d\u8a55\u4fa1\u53d7\u9a13\u671f\u9593",
+    "next_surveillance_window": "次回ｻｰﾍﾞｲﾗﾝｽ/再評価受験期間",
+    "next_exam_period": "次回受験期間/再試験猶予",
     "next_procedure_status": "次回手続",
     "employee_id": "社員ID",
     "display_name": "表示名",
     "birth_year_west": "生年(西暦)",
     "last_updated": "最終更新",
     "report_ids": "レポート",
+    "address": "自宅住所",
+    "web_publish_no": "WEB申込番号",
+    "sheet_source": "シート割当元",
 }
 QUAL_DEFAULT_COLUMNS = [
     "name",
@@ -75,8 +79,13 @@ QUAL_DEFAULT_COLUMNS = [
     "print_sheet",
     "source",
     "next_stage_label",
-    "next_exam_period",
+    "next_surveillance_window",
     "next_procedure_status",
+    "employee_id",
+    "display_name",
+    "birth_year_west",
+    "address",
+    "web_publish_no",
     "report_ids",
 ]
 QUAL_SORTABLE_COLUMNS = [
@@ -93,11 +102,16 @@ QUAL_SORTABLE_COLUMNS = [
     "print_sheet",
     "next_stage_label",
     "next_exam_period",
+    "next_surveillance_window",
     "next_procedure_status",
     "employee_id",
     "birth_year_west",
+    "address",
+    "web_publish_no",
+    "sheet_source",
+    "last_updated",
 ]
-QUAL_DATE_COLUMNS = {"registration_date", "first_issue_date", "issue_date", "expiry_date"}
+QUAL_DATE_COLUMNS = {"registration_date", "first_issue_date", "issue_date", "expiry_date", "last_updated"}
 QUAL_SORT_LEVELS = 3
 
 
@@ -696,6 +710,8 @@ def manual_add() -> Any:
         "source_sheet": source_sheet,
         "employee_id": payload.get("employee_id"),
         "birth_year_west": payload.get("birth_year_west"),
+        "address": payload.get("address"),
+        "web_publish_no": payload.get("web_publish_no"),
     }
     manual_kwargs = {key: _sanitize(value) for key, value in manual_kwargs.items()}
 
@@ -711,6 +727,8 @@ def manual_add() -> Any:
         "next_procedure_status",
         "print_sheet",
         "source_sheet",
+        "address",
+        "web_publish_no",
     ]
     missing_columns = [col for col in fallback_columns if manual_kwargs.get(col) is None]
     if missing_columns:

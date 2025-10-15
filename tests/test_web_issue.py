@@ -104,6 +104,8 @@ def test_issue_index_preview_renders(sample_duckdb: Path):
     assert "次回ｻｰﾍﾞｲﾗﾝｽ/再評価受験期間" in html
     assert "WEB申込番号" in html
     assert "生年(西暦)" in html
+    assert "WEB-001" in html
+    assert "東京都港区1-1-1" in html
 
 
 def test_issue_index_sheet_filter_and_columns(sample_duckdb: Path):
