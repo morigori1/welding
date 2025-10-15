@@ -42,10 +42,12 @@ COLUMN_LABELS: dict[str, str] = {
     "notice_stage": "通知区分",
     "next_stage_label": "次回区分",
     "next_notice_date": "次回通知日",
-    "next_surveillance_window": "次回受検期間",
+    "next_surveillance_window": "次回ｻｰﾍﾞｲﾗﾝｽ/再評価受験期間",
     "next_exam_period": "次回受験期間/再試験猶予",
     "retest_window": "再試験猶予",
     "next_procedure_status": "次回手続状況",
+    "address": "自宅住所",
+    "web_publish_no": "WEB申込番号",
 }
 
 COLUMN_WIDTHS: dict[str, int] = {
@@ -67,10 +69,12 @@ COLUMN_WIDTHS: dict[str, int] = {
     "notice_stage": 120,
     "next_stage_label": 160,
     "next_notice_date": 140,
-    "next_surveillance_window": 200,
+    "next_surveillance_window": 220,
     "next_exam_period": 200,
     "retest_window": 200,
     "next_procedure_status": 160,
+    "address": 260,
+    "web_publish_no": 180,
 }
 
 DEFAULT_ISSUE_COLUMNS: list[str] = [
@@ -86,6 +90,8 @@ DEFAULT_ISSUE_COLUMNS: list[str] = [
     "birth_date",
     "next_stage_label",
     "next_surveillance_window",
+    "address",
+    "web_publish_no",
     "retest_window",
 ]
 

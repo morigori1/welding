@@ -23,6 +23,9 @@ def sample_duckdb(tmp_path: Path) -> Path:
                 "expiry_date": pd.Timestamp("2026-03-01"),
                 "birth_year_west": "1980",
                 "継続": 1,
+                "next_surveillance_window": "2026/01/01〜2026/06/30",
+                "web_publish_no": "WEB-001",
+                "address": "東京都港区1-1-1",
             },
             {
                 "name": "佐藤花子",
@@ -32,6 +35,9 @@ def sample_duckdb(tmp_path: Path) -> Path:
                 "print_sheet": "B",
                 "expiry_date": pd.Timestamp("2026-05-15"),
                 "継続": 1,
+                "next_surveillance_window": "2026/04/01〜2026/09/30",
+                "web_publish_no": "WEB-002",
+                "address": "東京都新宿区2-2-2",
             },
             {
                 "name": "田中一郎",
@@ -41,6 +47,9 @@ def sample_duckdb(tmp_path: Path) -> Path:
                 "print_sheet": "B",
                 "expiry_date": pd.Timestamp("2026-06-20"),
                 "継続": 1,
+                "next_surveillance_window": "2026/05/01〜2026/10/31",
+                "web_publish_no": "WEB-003",
+                "address": "東京都世田谷区3-3-3",
             },
         ]
     )
@@ -92,6 +101,8 @@ def test_issue_index_preview_renders(sample_duckdb: Path):
     assert html.count('name="columns"') >= 2
     assert "資格種別" in html
     assert "継続" in html
+    assert "次回ｻｰﾍﾞｲﾗﾝｽ/再評価受験期間" in html
+    assert "WEB申込番号" in html
 
 
 def test_issue_index_sheet_filter_and_columns(sample_duckdb: Path):

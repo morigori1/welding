@@ -1468,6 +1468,8 @@ def write_due_tables(db_path: Path | str, due_raw: pd.DataFrame) -> pd.DataFrame
             "next_procedure_status",
             "birth_year_west",
             "print_sheet",
+            "address",
+            "web_publish_no",
         ]
         for col in text_columns:
             if col in due_enriched.columns:
