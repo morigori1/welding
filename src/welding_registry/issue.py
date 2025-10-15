@@ -35,7 +35,7 @@ COLUMN_LABELS: dict[str, str] = {
     "issue_date": "登録年月日",
     "expiry_date": "有効期限",
     "birth_date": "生年月日",
-    "birth_year_west": "生年",
+    "birth_year_west": "生年(西暦)",
     "registration_date": "登録年月日",
     "employee_id": "社員番号",
     "days_to_expiry": "残日数",
@@ -178,6 +178,8 @@ def build_issue_dataframe(
         rename_map["次回区分"] = "next_stage_label"
     if "次回手続状況" in df.columns:
         rename_map["次回手続状況"] = "next_procedure_status"
+    if "next_exam_window" in df.columns and "next_surveillance_window" not in df.columns:
+        rename_map["next_exam_window"] = "next_surveillance_window"
     df = df.rename(columns=rename_map)
 
     combined_col = next(
@@ -210,6 +212,13 @@ def build_issue_dataframe(
         mask = df["qualification_category"].isna() | (df["qualification_category"].str.strip() == "")
         if mask.any():
             df.loc[mask, "qualification_category"] = mapped.loc[mask]
+
+    if "next_surveillance_window" not in df.columns and "next_exam_period" in df.columns:
+        df["next_surveillance_window"] = df["next_exam_period"]
+    if "next_surveillance_window" not in df.columns:
+        df["next_surveillance_window"] = ""
+    else:
+        df["next_surveillance_window"] = df["next_surveillance_window"].astype("string").fillna("")
 
     df = _normalize_sheet_column(df)
 

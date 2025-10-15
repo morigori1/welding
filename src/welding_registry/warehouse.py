@@ -1465,6 +1465,7 @@ def write_due_tables(db_path: Path | str, due_raw: pd.DataFrame) -> pd.DataFrame
             "continuation_status",
             "next_stage_label",
             "next_exam_period",
+            "next_exam_window",
             "next_procedure_status",
             "birth_year_west",
             "print_sheet",
@@ -1497,6 +1498,24 @@ def write_due_tables(db_path: Path | str, due_raw: pd.DataFrame) -> pd.DataFrame
             )
             if mask.any():
                 due_enriched.loc[mask, "qualification_category"] = mapped.loc[mask]
+
+        if "next_surveillance_window" not in due_enriched.columns:
+            if "next_exam_window" in due_enriched.columns:
+                due_enriched["next_surveillance_window"] = (
+                    due_enriched["next_exam_window"].astype("string").fillna("")
+                )
+            elif "next_exam_period" in due_enriched.columns:
+                due_enriched["next_surveillance_window"] = (
+                    due_enriched["next_exam_period"].astype("string").fillna("")
+                )
+            else:
+                due_enriched["next_surveillance_window"] = pd.Series(
+                    [""] * len(due_enriched), dtype="string"
+                )
+        else:
+            due_enriched["next_surveillance_window"] = (
+                due_enriched["next_surveillance_window"].astype("string").fillna("")
+            )
 
         if "display_name" not in due_enriched.columns:
             if "name" in due_enriched.columns:
