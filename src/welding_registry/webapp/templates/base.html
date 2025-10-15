@@ -9,12 +9,19 @@
   </head>
   <body>
     <header class="app-header">
-      <div class="header-title">資格発行ツール</div>
-      <nav class="header-nav">
-        <a href="{{ url_for('qual.qual_index') }}">資格一覧</a>
-        <a href="{{ url_for('issue.index') }}">発行プレビュー</a>
-        {% if print_url is defined and print_url %}<a href="{{ print_url }}" target="_blank">印刷ビュー</a>{% endif %}
-      </nav>
+      <div class="header-title">
+        資格発行ツール
+        {% if welding_version %}
+          <span class="header-meta">v{{ welding_version }}</span>
+        {% endif %}
+      </div>
+      <div class="header-right">
+        <nav class="header-nav">
+          <a href="{{ url_for('qual.qual_index') }}">資格一覧</a>
+          <a href="{{ url_for('issue.index') }}">発行プレビュー</a>
+          {% if print_url is defined and print_url %}<a href="{{ print_url }}" target="_blank">印刷ビュー</a>{% endif %}
+        </nav>
+      </div>
     </header>
     <main class="app-main">
       {% block content %}{% endblock %}

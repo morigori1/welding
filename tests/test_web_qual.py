@@ -91,6 +91,7 @@ def test_qualifications_index_html(sample_db: Path) -> None:
     assert "次回ｻｰﾍﾞｲﾗﾝｽ/再評価受験期間" in text
     assert "生年(西暦)" in text
     assert "東京都港区1-1-1" in text
+    assert "header-meta" in text
 
 
 def test_manual_add_update_delete(sample_db: Path) -> None:
