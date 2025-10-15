@@ -184,12 +184,26 @@ def build_issue_dataframe(
         df["retest_window"] = window_series
         df = df.drop(columns=[combined_col])
 
-    if "継続" in df.columns:
-        df["qualification_category"] = (
-            df["継続"].astype("Int64").map({0: "新規", 1: "継続", 2: "再試験"}).fillna("").astype("string")
-        )
+    if "qualification_category" in df.columns:
+        df["qualification_category"] = df["qualification_category"].astype("string")
     else:
-        df["qualification_category"] = ""
+        df["qualification_category"] = pd.Series([""] * len(df), dtype="string")
+
+    mapped: pd.Series | None = None
+    if "継続" in df.columns:
+        mapped = (
+            df["継続"]
+            .astype("Int64")
+            .map({0: "新規", 1: "継続", 2: "再試験"})
+            .fillna("")
+            .astype("string")
+        )
+    elif "continuation_status" in df.columns:
+        mapped = df["continuation_status"].astype("string").fillna("")
+    if mapped is not None:
+        mask = df["qualification_category"].isna() | (df["qualification_category"].str.strip() == "")
+        if mask.any():
+            df.loc[mask, "qualification_category"] = mapped.loc[mask]
 
     df = _normalize_sheet_column(df)
 

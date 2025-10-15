@@ -1473,6 +1473,29 @@ def write_due_tables(db_path: Path | str, due_raw: pd.DataFrame) -> pd.DataFrame
             if col in due_enriched.columns:
                 due_enriched[col] = due_enriched[col].astype("string")
 
+        if "qualification_category" in due_enriched.columns:
+            due_enriched["qualification_category"] = due_enriched["qualification_category"].astype("string")
+        else:
+            due_enriched["qualification_category"] = pd.Series([""] * len(due_enriched), dtype="string")
+
+        mapped = None
+        if "継続" in due_enriched.columns:
+            mapped = (
+                due_enriched["継続"]
+                .astype("Int64")
+                .map({0: "新規", 1: "継続", 2: "再試験"})
+                .fillna("")
+                .astype("string")
+            )
+        elif "continuation_status" in due_enriched.columns:
+            mapped = due_enriched["continuation_status"].astype("string").fillna("")
+        if mapped is not None:
+            mask = due_enriched["qualification_category"].isna() | (
+                due_enriched["qualification_category"].str.strip() == ""
+            )
+            if mask.any():
+                due_enriched.loc[mask, "qualification_category"] = mapped.loc[mask]
+
         if "display_name" not in due_enriched.columns:
             if "name" in due_enriched.columns:
                 due_enriched["display_name"] = due_enriched["name"].astype("string")
